@@ -271,9 +271,11 @@ export class Game {
     if (s.engaged) return;
     const p = this.players.find((h) => !h.dead && h.state !== 'gameover');
     if (!p || !p.pad.x) return;
+    // near the edge of the screen at the area's end, pushing outward (a ledge or a wide beast can
+    // stop them short of the very edge)
     const sx = (p.mount ?? p).x - s.left;
     const [lo, hi] = s.camLimits;
-    const dir = p.pad.x < 0 && sx < 20 && s.camx >= hi ? -1 : p.pad.x > 0 && sx > 300 && s.camx <= lo ? 1 : 0;
+    const dir = p.pad.x < 0 && sx < 32 && s.camx >= hi ? -1 : p.pad.x > 0 && sx > 288 && s.camx <= lo ? 1 : 0;
     if (!dir || !this.exitOpen(dir)) return;
     // on the map they stand at this area, and walk back in at the end they left by
     const at = placeOf(this.area);

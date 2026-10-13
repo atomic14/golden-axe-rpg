@@ -31,8 +31,23 @@ for (let i = 0; i < 8; i++) { const e = new mods.Enemy(s, mods.KINDS.longmoan, h
 advance(10);
 log.push(['beast', JSON.stringify(mods.party.beasts), 'riding', h.mount?.type]);
 await shot('loot-beast');
+// magic from the saddle
+const foe = new mods.Enemy(s, mods.KINDS.heninger, h.x + 50, h.z, 0x1b); foe.entering = false; s.actors.push(foe);
+const mp0 = h.prog.mp, fh0 = foe.hp;
+tap('KeyL');
+for (let i = 0; i < 150; i++) advance(1);
+log.push(['cast mounted', 'mp', mp0, '->', h.prog.mp, 'foe hp', fh0, '->', foe.hp, 'still riding', h.mount?.type]);
+foe.gone = true;
+// ride off the right end of the area (a ledge stops the beast short of the very edge there)
+game.cleared.add(0); s.scripted = false;
+s.camx = s.camLimits[0]; s.camy = s.camYRange(s.camx)[0];
+b.x = s.left + 200; b.z = s.floorZ(b.x, 0x1080); b.y = b.ground;
+K('KeyD', true);
+for (let i = 0; i < 200 && game.state === 'play'; i++) advance(1);
+K('KeyD', false);
+log.push(['rode off the end', game.state]);
+while (game.state !== 'world') await sleep(50);
 // out to the map and back in: still riding
-game.cleared.add(0);
 game.openWorld(0, 'right');
 advance(30);
 log.push(['saved mount', JSON.parse(localStorage.getItem('ga-rpg.save')).party[0].mount]);

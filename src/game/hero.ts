@@ -390,6 +390,9 @@ export class Hero extends Fighter {
     audio.sfx('hurt');
   }
 
+  /** ticks left of a spell cast from a beast's back (it stands still meanwhile) */
+  private rideCast = 0;
+
   private updateRiding() {
     const b = this.mount!;
     const set = b.set!;
@@ -398,7 +401,15 @@ export class Hero extends Fighter {
     if (this.invuln > 0) this.invuln--;
     this.blink = this.invuln > 0;
     b.blink = this.blink;
-    if (b.state === 'attack') {
+    if (this.rideCast > 0) {
+      this.rideCast--;
+      b.anim.tick();
+    } else if (this.pressed.magic && this.canCast && b.state !== 'attack') {
+      // magic from the saddle: the spell without the casting pose (there's no mounted one)
+      this.prog.mp -= this.spell.mp;
+      if (b.anim.addr !== set[0]) b.setState('stand', set[0]);
+      this.rideCast = this.stage.castMagic(this, this.prog.spell);
+    } else if (b.state === 'attack') {
       b.anim.tick();
       b.attackEffects(this.enemies);
       if (b.anim.looped || b.t > 120) b.setState('stand', set[0]);
