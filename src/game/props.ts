@@ -6,6 +6,7 @@ import { Fighter, type Anims } from './fighter';
 import type { Hero } from './hero';
 import type { Stage } from './stage';
 import { FloatText } from './fx';
+import { questEvent } from './quests';
 
 const THIEF: Anims = {
   idle: 0x1873a, walk: 0x1876a, attacks: [], hurt: [0x189aa], fly: 0x189aa, collapse: 0x189aa, getup: 0x18a3a, lie: 0x189aa,
@@ -54,7 +55,10 @@ export class Thief extends Fighter {
     this.facing = from.x > this.x ? -1 : 1;
     this.vy = -2;
     this.vx = -this.facing * 1.5;
-    if (!this.items.length) this.fleeing = true;
+    if (!this.items.length) {
+      this.fleeing = true;
+      questEvent({ kind: 'thief' });
+    }
     return true;
   }
 

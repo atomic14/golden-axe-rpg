@@ -8,6 +8,8 @@ import type { Stage } from './stage';
 import { fillRect } from '../gfx';
 import { enemyLevel, enemyHpScale, gainXp, xpFor } from './rpg';
 import { FloatText } from './fx';
+import { party, goldFor } from './party';
+import { questEvent } from './quests';
 
 export interface Kind {
   name: string;
@@ -262,6 +264,10 @@ export class Enemy extends Fighter {
     const xp = xpFor(this);
     for (const h of this.stage.heroes) if (h.state !== 'gameover') gainXp(h, xp);
     this.stage.actors.push(new FloatText(this.stage, this, `+${xp} XP`, '#8f8', 72, 60));
+    questEvent({ kind: 'kill', foe: this.kind.name });
+    const gold = goldFor(this.level, !this.kind.grabbable);
+    party.gold += gold;
+    this.stage.actors.push(new FloatText(this.stage, this, `+${gold}G`, '#fd0', 84, 60));
   }
 
   draw() {

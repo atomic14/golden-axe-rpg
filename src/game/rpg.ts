@@ -4,6 +4,7 @@
 import type { Fighter } from './fighter';
 import type { Hero } from './hero';
 import type { Enemy } from './enemy';
+import { WEAPON_BONUS, ARMOUR_GUARD } from './party';
 
 /** the original's damage and health, multiplied up to RPG-sized numbers */
 export const POINTS = 5;
@@ -118,6 +119,8 @@ export interface ProgressData {
   ranks: Record<string, number>;
   mp: number;
   spell: number;
+  weapon?: number;
+  armour?: number;
 }
 
 /** What a hero has grown into: kept apart from the fighter so it carries between areas. */
@@ -130,6 +133,9 @@ export class Progress {
   mp = 20;
   /** the equipped spell: an index into the hero's SPELLS */
   spell = 0;
+  /** gear tiers (party.ts) */
+  weapon = 0;
+  armour = 0;
   /** ticks until Last Stand can save them again */
   standCooldown = 0;
   /** fractional regeneration carried between ticks */
@@ -140,12 +146,14 @@ export class Progress {
 
   /** what a save game keeps */
   snapshot(): ProgressData {
-    const { level, xp, points, ranks, mp, spell } = this;
-    return { level, xp, points, ranks: { ...ranks }, mp, spell };
+    const { level, xp, points, ranks, mp, spell, weapon, armour } = this;
+    return { level, xp, points, ranks: { ...ranks }, mp, spell, weapon, armour };
   }
 
   restore(d: ProgressData) {
-    Object.assign(this, { level: d.level, xp: d.xp, points: d.points, ranks: { ...d.ranks }, mp: d.mp, spell: d.spell });
+    Object.assign(this, {
+      level: d.level, xp: d.xp, points: d.points, ranks: { ...d.ranks }, mp: d.mp, spell: d.spell, weapon: d.weapon ?? 0, armour: d.armour ?? 0,
+    });
   }
 
   rank(id: string) {
@@ -257,7 +265,7 @@ export function roll(from: Fighter | null, to: Fighter, raw: number, blow: Blow)
     const hero = from?.isHero ? (from as Hero) : null;
     if (hero) {
       const p = hero.prog;
-      dmg = raw * POINTS * (1 + 0.1 * (p.level - 1)) * (1 + 0.15 * p.rank('power'));
+      dmg = raw * POINTS * (1 + 0.1 * (p.level - 1)) * (1 + 0.15 * p.rank('power')) * (1 + WEAPON_BONUS[p.weapon]);
       if (hero.state === 'back' && p.rank('whirl')) { dmg *= 2; knock = true; }
       if (hero.state === 'dash' && p.rank('charge')) { dmg *= 1 + 0.5 * p.rank('charge'); knock = true; }
       if ((hero.state === 'grab' || hero.state === 'throw') && p.rank('grip')) dmg *= 1 + 0.5 * p.rank('grip');
@@ -271,7 +279,7 @@ export function roll(from: Fighter | null, to: Fighter, raw: number, blow: Blow)
   }
   if (to.isHero) {
     const p = (to as Hero).prog;
-    dmg *= 1 - 0.08 * p.rank('tough');
+    dmg *= (1 - 0.08 * p.rank('tough')) * (1 - ARMOUR_GUARD[p.armour]);
     if ((to as Hero).mount) dmg *= 1 - 0.25 * p.rank('beast');
   }
   return { dmg: Math.max(1, Math.round(dmg)), crit, knock };

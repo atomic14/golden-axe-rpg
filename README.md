@@ -13,9 +13,14 @@ it:
   of the hero's original magic levels as its own spell, cast with MP) and Survival.
 - **Camps**: rest to heal and restore magic (thieves still creep in), and the journey is saved
   (in the browser's storage); the title screen offers to continue it.
+- **Towns and quests** (`src/game/story.ts`): Turtle Village and Stone Town fill with people once
+  freed (the original's villager sprites; gnome thieves turned traders). Talk with attack; traders
+  sell food, tonics, elixirs and better weapons and armour for the gold foes drop; some townsfolk
+  give quests. Each area has a few words on arrival and when its boss falls.
 
-Tests for the new parts: `tests/roam.js`, `tests/rpg.js`, `tests/world.js` (with `npm run dev`
-running, `npx tsx tools/play.ts tests/world.js http://localhost:5173/`).
+Tests for the new parts: `tests/roam.js`, `tests/rpg.js`, `tests/world.js`, `tests/town.js` (with
+`npm run dev` running, `npx tsx tools/play.ts tests/world.js http://localhost:5173/`). The port's
+older tests in `tests/` drive the arcade flow and no longer apply.
 
 The original port's README follows.
 

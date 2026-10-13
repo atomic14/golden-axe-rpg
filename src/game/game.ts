@@ -15,6 +15,12 @@ import { events, Progress } from './rpg';
 import { FloatText } from './fx';
 import { WorldMap, ROUTE, AREA_NAMES, placeOf, type Place } from './world';
 import { loadSave, writeSave, type SaveData } from './save';
+import { Npc } from './npc';
+import { PEOPLE, ARRIVAL, VICTORY } from './story';
+import { Dialogue, type Overlay } from './talk';
+import { Shop } from './shop';
+import { conversation, questEvent, questEvents, resetQuests, log } from './quests';
+import { party, resetParty } from './party';
 
 export const AREAS = 5;
 
@@ -62,6 +68,8 @@ export class Game {
   private titleMove = 0;
   /** the character sheet, open while paused */
   menu: Menu | null = null;
+  /** a conversation or the shop, over a stopped game */
+  overlay: Overlay | null = null;
 
   constructor() {
     events.levelUp = (h) => {
@@ -70,13 +78,14 @@ export class Game {
       if (s) s.actors.push(new FloatText(s, h, 'LEVEL UP!', '#ff0', 84, 90));
       if (!h.cpu) this.toast(`${h.def.name.split(' ')[0]} REACHED LEVEL ${h.prog.level}`);
     };
+    questEvents.done = (q) => this.toast(`QUEST DONE: ${q.title}`);
   }
 
   /** Pause opens the character sheet; pause again closes it. */
   private togglePause() {
     this.paused = !this.paused;
     const p = this.players[0];
-    this.menu = this.paused && p ? new Menu(p) : null;
+    this.menu = this.paused && p ? new Menu(p, this.heroes) : null;
   }
 
   update() {
@@ -128,19 +137,30 @@ export class Game {
         break;
       }
       case 'play': {
+        const s = this.stage!;
+        if (this.opening > 0) this.opening--;
+        // a conversation or shop holds everything until it's done
+        if (this.overlay) {
+          if (this.opening > 0) return;
+          const o = this.overlay;
+          if (o.update() && this.overlay === o) this.overlay = null;
+          return;
+        }
         if (pr.pause) this.togglePause();
         if (this.paused) {
           this.menu?.update();
           return;
         }
-        const s = this.stage!;
-        if (this.opening > 0) this.opening--;
+        if (pr.attack && this.talk(s)) return;
         s.update();
         if (s.roam && s.scripted && s.progress >= END && !s.enemiesAlive && s.spawnIndex >= s.data.spawns.length && !this.areaCleared) {
           this.areaCleared = true;
           this.cleared.add(this.area);
-          if (this.area + 1 < AREAS) this.toast('AREA CLEAR! A CAMP AWAITS ON THE MAP');
-          else this.go('clear');
+          questEvent({ kind: 'clear', area: this.area });
+          if (this.area + 1 < AREAS) {
+            const words = VICTORY[this.area];
+            if (words) this.overlay = new Dialogue(words);
+          } else this.go('clear');
           s.scripted = false;
           this.save();
           audio.music(`area${this.area}`);
@@ -227,6 +247,18 @@ export class Game {
     }
   }
 
+  /** The player presses attack beside someone (with no fight on): talk to them, or trade. */
+  private talk(s: Stage): boolean {
+    if (s.engaged) return false;
+    const p = this.players.find((h) => !h.dead && !h.mount && ['stand', 'walk', 'run'].includes(h.state));
+    const npc = p && s.actors.find((a): a is Npc => a instanceof Npc && a.near(p));
+    if (!npc) return false;
+    const lines = conversation(npc.def, this.heroes, this.cleared);
+    const shop = npc.def.shop;
+    this.overlay = new Dialogue(lines, shop ? () => (this.overlay = new Shop(shop.name, this.heroes, shop.tiers)) : undefined);
+    return true;
+  }
+
   /** Is the left (-1) or right (1) end of the area a way out? The right opens with the boss beaten. */
   exitOpen(dir: number): boolean {
     return dir < 0 || !this.stage!.scripted;
@@ -274,7 +306,10 @@ export class Game {
 
   save() {
     if (!this.party.length || !this.world) return;
-    writeSave({ v: 1, party: this.party, visited: [...this.visited], cleared: [...this.cleared], at: this.world.at, side: this.world.side });
+    writeSave({
+      v: 1, party: this.party, visited: [...this.visited], cleared: [...this.cleared], at: this.world.at, side: this.world.side,
+      purse: structuredClone(party), quests: structuredClone(log),
+    });
   }
 
   /** Carry on a saved journey from the map. */
@@ -284,6 +319,8 @@ export class Game {
     this.choice = d.party[0].hero;
     this.visited = new Set(d.visited);
     this.cleared = new Set(d.cleared);
+    resetParty(d.purse);
+    resetQuests(d.quests);
     this.openWorld(Math.min(d.at, ROUTE.length - 1), d.side);
   }
 
@@ -446,6 +483,8 @@ export class Game {
     this.pending = null;
     this.visited.clear();
     this.cleared.clear();
+    resetParty();
+    resetQuests();
     // the party as chosen (the heroes themselves are made on entering an area)
     this.pending = this.freshParty();
     const area = new URLSearchParams(location.search).get('area');
@@ -484,6 +523,14 @@ export class Game {
     });
     s.heroes = this.heroes;
     s.actors.push(...this.heroes);
+    // the people here: always, or once the area is freed (a town at peace)
+    for (const town of PEOPLE[n] ?? []) {
+      if (town.freed && !this.cleared.has(n)) continue;
+      if (town.freed) s.peaceful = true;
+      for (const def of town.npcs) s.actors.push(new Npc(s, def));
+    }
+    // the first time here, a few words about the place
+    this.overlay = s.scripted && ARRIVAL[n] ? new Dialogue(ARRIVAL[n]) : null;
     this.stage = s;
     this.bossMusic = false;
     this.areaCleared = false;
@@ -559,7 +606,7 @@ export class Game {
       case 'clear':
         this.stage!.draw();
         drawHud(this.stage!, this.heroes, AREA_NAMES[this.area]);
-        if (this.state === 'play') this.drawSigns(this.stage!);
+        if (this.state === 'play' && !this.overlay) this.drawSigns(this.stage!);
         if (this.state === 'clear') drawText('STAGE CLEAR', W / 2, 90, '#ff0', 'center');
         if (this.opening > 0) {
           const k = 1 - this.opening / 30, bw = W * k, bh = H * k;
@@ -568,6 +615,7 @@ export class Game {
           fillRect(0, 0, (W - bw) / 2, H, '#000');
           fillRect((W + bw) / 2, 0, (W - bw) / 2 + 1, H, '#000');
         }
+        if (this.overlay && this.opening <= 0) this.overlay.draw();
         if (this.paused) {
           if (this.menu) this.menu.draw();
           else drawText('PAUSED', W / 2, 100, '#fff', 'center');
@@ -587,7 +635,7 @@ export class Game {
         break;
     }
     if (this.state === 'title' || this.state === 'select') this.toastTimer = 0;
-    if (this.toastTimer > 0 && !this.paused) {
+    if (this.toastTimer > 0 && !this.paused && !this.overlay) {
       this.toastTimer--;
       fillRect(0, 26, W, 13, 'rgba(0,0,0,0.6)');
       drawText(this.toastText, W / 2, 29, '#ff0', 'center');

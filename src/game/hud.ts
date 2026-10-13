@@ -5,6 +5,7 @@ import { input } from '../input';
 import type { Hero } from './hero';
 import type { Stage } from './stage';
 import { xpToNext } from './rpg';
+import { party } from './party';
 
 function bar(x: number, y: number, w: number, h: number, v: number, max: number, color: string) {
   fillRect(x - 1, y - 1, w + 2, h + 2, '#000');
@@ -18,8 +19,9 @@ export function drawHud(stage: Stage, heroes: Hero[], areaName: string) {
   if (p1) {
     const s = p1.spell;
     drawText(`${s.name} ${s.mp}MP`, 312, 6, p1.canCast ? '#8cf' : '#646', 'right');
+    drawText(`${party.gold}G`, 8, 16, '#fd0');
     if (p1.prog.points > 0 && (stage.time >> 5) & 1) {
-      drawText(`SKILL POINT! ${input.touch ? 'TAP II' : 'PRESS P'}`, 160, 18, '#ff0', 'center');
+      drawText(`SKILL POINT! ${input.touch ? 'TAP II' : 'PRESS P'}`, 312, 16, '#ff0', 'right');
     }
   }
   heroes.forEach((h, i) => {

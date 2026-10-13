@@ -6,6 +6,7 @@ tap('Enter'); advance(20); tap('Enter');
 while (game.state !== 'world') await sleep(50);
 advance(30); tap('KeyJ');
 while (game.state !== 'play') await sleep(50);
+while (game.overlay) { tap('KeyJ'); advance(30); }
 advance(40);
 const s = game.stage, h = game.heroes[0];
 s.scripted = false; s.spawnIndex = s.data.spawns.length;

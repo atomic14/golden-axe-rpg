@@ -7,6 +7,7 @@ tap('Enter'); advance(20); tap('Enter');
 while (game.state !== 'world') await sleep(50);
 advance(30); tap('KeyJ');
 while (game.state !== 'play') await sleep(50);
+while (game.overlay) { tap('KeyJ'); advance(30); }
 advance(5);
 const log = [];
 const clear = () => { for (const a of game.stage.actors) if (a.isEnemy && a.hostile) a.gone = true; };
@@ -16,6 +17,7 @@ const walk = async (key, ticks, cheat = true, until = () => false) => {
   let lastX = 0, still = 0, dodge = 0;
   for (let i = 0; i < ticks; i++) {
     if (cheat) clear();
+    if (game.overlay) { K(key, false); tap('KeyJ'); advance(20); K(key, true); }
     advance(1);
     if (game.state !== 'play' || until()) break;
     const h = game.heroes[0];
@@ -38,6 +40,7 @@ while (game.state !== 'world') await sleep(50);
 log.push(['out to the map at', game.world.at, game.world.side]);
 advance(20); tap('ArrowRight'); advance(60); tap('ArrowRight'); advance(90); tap('KeyJ');
 while (game.state !== 'play') await sleep(50);
+while (game.overlay) { tap('KeyJ'); advance(30); }
 advance(10);
 log.push(['in area 1', game.area, game.stage.camx, game.stage.scripted]);
 await shot('roam-area1');
@@ -46,6 +49,7 @@ await walk('KeyA', 200);
 while (game.state !== 'world') await sleep(50);
 advance(20); tap('ArrowLeft'); advance(90); tap('ArrowLeft'); advance(60); tap('KeyJ');
 while (game.state !== 'play') await sleep(50);
+while (game.overlay) { tap('KeyJ'); advance(30); }
 advance(10);
 log.push(['back in area 0', game.area, game.stage.camx, game.stage.scripted, game.heroes[0].facing]);
 await shot('roam-back0');

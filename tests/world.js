@@ -12,6 +12,7 @@ log.push(['locked: still at', game.world.at]);
 await shot('world-start');
 tap('KeyJ');
 while (game.state !== 'play') await sleep(50);
+while (game.overlay) { tap('KeyJ'); advance(30); }
 advance(40);
 let s = game.stage;
 log.push(['entered', game.area, s.scripted]);
@@ -20,7 +21,8 @@ s.camx = s.camLimits[0]; s.spawnIndex = s.data.spawns.length;
 s.actors = s.actors.filter((a) => a.isHero);
 for (const h of game.heroes) { h.x = s.left + 200; h.z = s.floorZ(h.x, 0x1080); h.y = h.ground; }
 advance(5);
-log.push(['cleared', [...game.cleared], 'saved', !!localStorage.getItem('ga-rpg.save')]);
+log.push(['cleared', [...game.cleared], 'saved', !!localStorage.getItem('ga-rpg.save'), 'victory words', !!game.overlay]);
+while (game.overlay) { tap('KeyJ'); advance(30); }
 const h = game.heroes[0];
 h.prog.xp = 30; h.hp = 50; h.prog.level = 3; h.refreshStats();
 K('KeyD', true);
@@ -56,6 +58,7 @@ log.push(['continued', game.world.at, game.party.map((m) => m.prog.level)]);
 tap('ArrowRight'); advance(90);
 tap('KeyJ');
 while (game.state !== 'play') await sleep(50);
+while (game.overlay) { tap('KeyJ'); advance(30); }
 advance(40);
 log.push(['area 1', game.area, game.stage.scripted, game.heroes[0].prog.level, game.heroes[0].x - game.stage.left]);
 await shot('world-area1');

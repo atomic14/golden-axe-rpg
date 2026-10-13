@@ -1,6 +1,6 @@
 import './style.css';
-import { loadAssets, loadHd, loadHdArea } from './assets';
-import { initGfx, setScale, scale, W, H, ctx, drawText } from './gfx';
+import { loadAssets, loadHd, loadHdArea, anim } from './assets';
+import { initGfx, setScale, scale, W, H, ctx, drawText, drawSprite } from './gfx';
 import { input } from './input';
 import { audio } from './audio';
 import { Game } from './game/game';
@@ -9,6 +9,8 @@ import { spawnActor } from './game/spawn';
 import { Thief } from './game/props';
 import { Brain } from './game/partner';
 import { Filter } from './filter';
+import { party } from './game/party';
+import * as quests from './game/quests';
 
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
 initGfx(canvas);
@@ -48,7 +50,7 @@ async function boot() {
     game,
     audio,
     // for tests that set up fights (the same module instances the game uses)
-    mods: { Enemy, KINDS, spawnActor, Thief, Brain },
+    mods: { Enemy, KINDS, spawnActor, Thief, Brain, drawSprite, anim, ctx, party, quests },
     filter,
     advance(n: number) {
       for (let i = 0; i < n; i++) {

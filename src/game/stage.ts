@@ -54,6 +54,8 @@ export class Stage {
   private nextEncounter = 0;
   /** which way the camera last moved: 1 right, -1 left */
   heading = 1;
+  /** a freed town: no random encounters */
+  peaceful = false;
 
   constructor(public area: number) {}
 
@@ -113,7 +115,7 @@ export class Stage {
 
   /** A random encounter: a few of the area's own foes walk in from the way the heroes are going. */
   private encounter() {
-    if (this.travel < this.nextEncounter || this.frozen || this.engaged) return;
+    if (this.peaceful || this.travel < this.nextEncounter || this.frozen || this.engaged) return;
     this.travel = 0;
     this.nextEncounter = this.encounterGap();
     const pool = this.table.length ? this.table : [[0, 0, 0, 0, 0x18b28] as [number, number, number, number, number]];
