@@ -111,6 +111,15 @@ export function treeOf(hero: number): Skill[] {
   return [...WEAPON, ...element, ...SURVIVAL];
 }
 
+export interface ProgressData {
+  level: number;
+  xp: number;
+  points: number;
+  ranks: Record<string, number>;
+  mp: number;
+  spell: number;
+}
+
 /** What a hero has grown into: kept apart from the fighter so it carries between areas. */
 export class Progress {
   level = 1;
@@ -128,6 +137,16 @@ export class Progress {
   hpRegen = 0;
 
   constructor(public hero: number) {}
+
+  /** what a save game keeps */
+  snapshot(): ProgressData {
+    const { level, xp, points, ranks, mp, spell } = this;
+    return { level, xp, points, ranks: { ...ranks }, mp, spell };
+  }
+
+  restore(d: ProgressData) {
+    Object.assign(this, { level: d.level, xp: d.xp, points: d.points, ranks: { ...d.ranks }, mp: d.mp, spell: d.spell });
+  }
 
   rank(id: string) {
     return this.ranks[id] ?? 0;

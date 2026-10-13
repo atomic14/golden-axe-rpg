@@ -1,3 +1,26 @@
+# Golden Axe RPG
+
+A respin of the [Golden Axe browser port](../golden-axe) into an action RPG, built on the same
+engine and the same ROM-derived art, sound and music. The fighting is still the arcade's; around
+it:
+
+- **A journey on the world map** (the parchment from the original's story scenes, its route
+  painted out): the five areas and the camps between them, the way on opening as each boss falls.
+- **Roaming**: an area scrolls both ways. Its scripted fights and boss play on the first visit;
+  after that its foes turn up as random encounters. Walk off either end to return to the map.
+- **Levels and skills** (`src/game/rpg.ts`): experience, damage numbers, enemies that grow
+  tougher area by area, and three skill trees per hero, opened with pause: Weapon, Element (each
+  of the hero's original magic levels as its own spell, cast with MP) and Survival.
+- **Camps**: rest to heal and restore magic (thieves still creep in), and the journey is saved
+  (in the browser's storage); the title screen offers to continue it.
+
+Tests for the new parts: `tests/roam.js`, `tests/rpg.js`, `tests/world.js` (with `npm run dev`
+running, `npx tsx tools/play.ts tests/world.js http://localhost:5173/`).
+
+The original port's README follows.
+
+---
+
 # Golden Axe — a browser port
 
 **Play it at [golden-axe.atomic14.com](https://golden-axe.atomic14.com)** — on a desktop, with a

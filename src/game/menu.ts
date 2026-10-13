@@ -2,7 +2,7 @@
 // Element, Survival) to spend skill points in, and the spell to equip.
 import { input } from '../input';
 import { audio } from '../audio';
-import { drawText, fillRect, W, H } from '../gfx';
+import { drawText, fillRect, wrap, W, H } from '../gfx';
 import type { Hero } from './hero';
 import { BRANCHES, ROW_LEVEL, SPELLS, elementOf, treeOf, xpToNext, type Skill } from './rpg';
 
@@ -122,17 +122,4 @@ export class Menu {
     const help = input.touch ? 'TAP TWICE: LEARN/EQUIP  II: CLOSE' : 'ATTACK LEARN  MAGIC EQUIP  P CLOSE';
     drawText(help, W / 2, 210, '#8af', 'center');
   }
-}
-
-function wrap(text: string, n: number): string[] {
-  const out: string[] = [];
-  let line = '';
-  for (const w of text.split(' ')) {
-    if (line && line.length + 1 + w.length > n) {
-      out.push(line);
-      line = w;
-    } else line = line ? `${line} ${w}` : w;
-  }
-  if (line) out.push(line);
-  return out;
 }

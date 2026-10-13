@@ -1,6 +1,11 @@
-// Roaming: walk the first area (enemies cleared by cheating), out the right end into area 1,
-// then back left into area 0, where random encounters replace the scripted fights.
+// Roaming: walk the first area (enemies cleared by cheating), out the right end to the map, into
+// area 1, then back out its left end and into area 0 at its right end, where random encounters
+// replace the scripted fights.
+localStorage.removeItem('ga-rpg.save');
+game.go('title'); advance(2);
 tap('Enter'); advance(20); tap('Enter');
+while (game.state !== 'world') await sleep(50);
+advance(30); tap('KeyJ');
 while (game.state !== 'play') await sleep(50);
 advance(5);
 const log = [];
@@ -27,14 +32,19 @@ const walk = async (key, ticks, cheat = true, until = () => false) => {
 await walk('KeyD', 2400);
 log.push(['end of area 0', game.state, game.area, game.stage.camx, game.stage.scripted]);
 await shot('roam-end0');
-// walk out the right end
+// walk out the right end to the map, then on past the camp into area 1
 await walk('KeyD', 200);
+while (game.state !== 'world') await sleep(50);
+log.push(['out to the map at', game.world.at, game.world.side]);
+advance(20); tap('ArrowRight'); advance(60); tap('ArrowRight'); advance(90); tap('KeyJ');
 while (game.state !== 'play') await sleep(50);
 advance(10);
 log.push(['in area 1', game.area, game.stage.camx, game.stage.scripted]);
 await shot('roam-area1');
-// back left into area 0, arriving at its right end
+// back out the left end, and on the map back into area 0, arriving at its right end
 await walk('KeyA', 200);
+while (game.state !== 'world') await sleep(50);
+advance(20); tap('ArrowLeft'); advance(90); tap('ArrowLeft'); advance(60); tap('KeyJ');
 while (game.state !== 'play') await sleep(50);
 advance(10);
 log.push(['back in area 0', game.area, game.stage.camx, game.stage.scripted, game.heroes[0].facing]);

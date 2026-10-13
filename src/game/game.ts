@@ -1,5 +1,6 @@
-// Game flow: title, character select, the five areas (roamed both ways, walking off an end into
-// the next), game over.
+// Game flow: title (continue a saved journey or start anew), character select, the world map, the
+// five areas (roamed both ways, walking off an end back to the map), camps to rest and save at,
+// game over.
 import { input } from '../input';
 import { assets } from '../assets';
 import { audio } from '../audio';
@@ -12,10 +13,10 @@ import { Thief, Campfire, CampPotion } from './props';
 import { Menu } from './menu';
 import { events } from './rpg';
 import { FloatText } from './fx';
+import { WorldMap, ROUTE, AREA_NAMES, placeOf, type Place } from './world';
+import { loadSave, writeSave, type SaveData } from './save';
 
 export const AREAS = 5;
-/** what the signs at an area's ends call the areas */
-export const AREA_NAMES = ['WILDERNESS', 'TURTLE VILLAGE', 'STONE TOWN', 'EAGLE ISLAND', 'THE CASTLE'];
 
 /** settings kept between visits (storage can be unavailable: private windows, blocked sites) */
 function load(key: string): string | null {
@@ -35,7 +36,7 @@ function save(key: string, value: string) {
 /** hero indices from left to right on the select screen */
 const SELECT_ORDER = [2, 0, 1];
 
-type State = 'title' | 'select' | 'loading' | 'play' | 'travel' | 'clear' | 'camp' | 'map' | 'continue' | 'gameover' | 'ending';
+type State = 'title' | 'select' | 'loading' | 'world' | 'play' | 'travel' | 'clear' | 'camp' | 'continue' | 'gameover' | 'ending';
 
 export class Game {
   state: State = 'title';
@@ -49,8 +50,16 @@ export class Game {
   partner = load('ga.partner') === 'on' || new URLSearchParams(location.search).has('cpu');
   /** areas the heroes have been to (their scripted fights only play the first time) */
   visited = new Set<number>();
-  /** where the heroes are heading when they walk off an area's end */
-  private travelTo: { area: number; from: 'left' | 'right' } | null = null;
+  /** areas whose boss is beaten: the way on (and the camp after) open */
+  cleared = new Set<number>();
+  world: WorldMap | null = null;
+  /** what happens once the view has closed into a box */
+  private next: (() => void) | null = null;
+  /** a saved party waiting for the heroes to be made (they need a stage) */
+  private pending: SaveData['party'] | null = null;
+  /** the title screen's choice when there's a saved journey: 0 continue, 1 new */
+  titleChoice = 0;
+  private titleMove = 0;
   /** the character sheet, open while paused */
   menu: Menu | null = null;
 
@@ -74,9 +83,27 @@ export class Game {
     this.t++;
     const pr = input.pressed;
     switch (this.state) {
-      case 'title':
-        if (pr.start || pr.attack || pr.any) this.go('select');
+      case 'title': {
+        const saved = loadSave();
+        if (!saved) {
+          if (pr.start || pr.attack || pr.any) this.go('select');
+          break;
+        }
+        if (input.pad.y && !this.titleMove) this.titleChoice = 1 - this.titleChoice;
+        this.titleMove = input.pad.y;
+        const tap = input.tapAt;
+        if (tap) this.titleChoice = tap.y < 134 ? 0 : 1;
+        if (tap || pr.start || pr.attack || pr.jump) {
+          if (this.titleChoice === 0) this.continueGame(saved);
+          else this.go('select');
+        }
         break;
+      }
+      case 'world': {
+        const place = this.world!.update();
+        if (place) this.enter(place);
+        break;
+      }
       case 'select': {
         if (this.t === 1) audio.music('select');
         if (this.t > 10) {
@@ -111,9 +138,11 @@ export class Game {
         s.update();
         if (s.roam && s.scripted && s.progress >= END && !s.enemiesAlive && s.spawnIndex >= s.data.spawns.length && !this.areaCleared) {
           this.areaCleared = true;
-          if (this.area + 1 < AREAS) this.toast(`THE WAY TO ${AREA_NAMES[this.area + 1]} IS OPEN`);
+          this.cleared.add(this.area);
+          if (this.area + 1 < AREAS) this.toast('AREA CLEAR! A CAMP AWAITS ON THE MAP');
           else this.go('clear');
           s.scripted = false;
+          this.save();
           audio.music(`area${this.area}`);
         }
         if (s.progress >= 0x1431 && !this.bossMusic && s.scripted) {
@@ -133,18 +162,17 @@ export class Game {
         break;
       }
       case 'travel':
-        // the view closes into a box, then the next area opens
-        if (this.t >= 30 && this.travelTo) {
-          const { area, from } = this.travelTo;
-          this.travelTo = null;
-          void this.loadArea(area, false, from);
+        // the view closes into a box, then on to what's next
+        if (this.t >= 30 && this.next) {
+          const next = this.next;
+          this.next = null;
+          next();
         }
         break;
       case 'clear':
         this.stage!.update();
         if (this.t > 150) {
-          if (this.area + 1 < AREAS && !this.stage!.roam) this.startCamp();
-          else this.startEnding();
+          this.startEnding();
         }
         break;
       case 'camp': {
@@ -172,23 +200,7 @@ export class Game {
         const thieves = s.actors.some((a) => a instanceof Thief);
         // jars left untouched go back to their owners
         if (this.t > 400 && !thieves) for (const a of s.actors) if (a instanceof CampPotion) a.gone = true;
-        if (this.t > 400 && !thieves) this.startMap();
-        break;
-      }
-      case 'map': {
-        // the view closes into a box, then the original's map scene: the parchment zooms in and a
-        // quill draws the route while the story types out (rendered from a recording)
-        const v = this.mapVideo;
-        if (this.t === 30) {
-          audio.music('map');
-          void v.play().catch(() => {});
-        }
-        // timed in game ticks so it ends the same however the video plays (or if it can't)
-        const len = Number.isFinite(v.duration) && !v.error ? v.duration * 60 : 230;
-        if (this.t >= 30 && (v.ended || this.t >= 30 + len + 10)) {
-          v.pause();
-          void this.loadArea(this.area + 1);
-        }
+        if (this.t > 400 && !thieves) this.finishCamp();
         break;
       }
       case 'ending':
@@ -215,16 +227,12 @@ export class Game {
     }
   }
 
-  /** The area the heroes would walk into off the left (-1) or right (1) end, if any. */
-  exitArea(dir: number): number | null {
-    const n = this.area + dir;
-    if (n < 0 || n >= AREAS) return null;
-    // the way on opens once the area's boss is beaten (or on a later visit)
-    if (dir > 0 && this.stage!.scripted) return null;
-    return n;
+  /** Is the left (-1) or right (1) end of the area a way out? The right opens with the boss beaten. */
+  exitOpen(dir: number): boolean {
+    return dir < 0 || !this.stage!.scripted;
   }
 
-  /** The player walks off an end of the area (with no fight on): on to the next. */
+  /** The player walks off an end of the area (with no fight on): back to the map. */
   private checkExits(s: Stage) {
     if (s.engaged) return;
     const p = this.players.find((h) => !h.dead && h.state !== 'gameover');
@@ -232,11 +240,51 @@ export class Game {
     const sx = (p.mount ?? p).x - s.left;
     const [lo, hi] = s.camLimits;
     const dir = p.pad.x < 0 && sx < 20 && s.camx >= hi ? -1 : p.pad.x > 0 && sx > 300 && s.camx <= lo ? 1 : 0;
-    if (!dir) return;
-    const n = this.exitArea(dir);
-    if (n === null) return;
-    this.travelTo = { area: n, from: dir > 0 ? 'left' : 'right' };
+    if (!dir || !this.exitOpen(dir)) return;
+    // on the map they stand at this area, and walk back in at the end they left by
+    const at = placeOf(this.area);
+    this.close(() => this.openWorld(at, dir > 0 ? 'right' : 'left'));
+  }
+
+  /** Close the view into a box, then do `next`. */
+  private close(next: () => void) {
+    this.next = next;
     this.go('travel');
+  }
+
+  /** The world map, with the party at a place on the route; saved on arrival. */
+  openWorld(at: number, side: 'left' | 'right' = 'left') {
+    this.world = new WorldMap(this.cleared, at, side);
+    this.stage = null;
+    this.go('world');
+    this.save();
+  }
+
+  /** Into a place chosen on the map: an area (at the end the party walked up to) or a camp. */
+  private enter(p: Place) {
+    if (p.kind === 'camp') void this.enterCamp(p.area);
+    else void this.loadArea(p.area, false, this.world!.side);
+  }
+
+  /** the party as it stands, for the map and the save: the heroes, or a saved party not yet made */
+  get party(): SaveData['party'] {
+    if (this.heroes.length) return this.heroes.map((h) => ({ hero: h.index, cpu: h.cpu, prog: h.prog.snapshot() }));
+    return this.pending ?? [];
+  }
+
+  save() {
+    if (!this.party.length || !this.world) return;
+    writeSave({ v: 1, party: this.party, visited: [...this.visited], cleared: [...this.cleared], at: this.world.at, side: this.world.side });
+  }
+
+  /** Carry on a saved journey from the map. */
+  continueGame(d: SaveData) {
+    this.heroes = [];
+    this.pending = d.party;
+    this.choice = d.party[0].hero;
+    this.visited = new Set(d.visited);
+    this.cleared = new Set(d.cleared);
+    this.openWorld(Math.min(d.at, ROUTE.length - 1), d.side);
   }
 
   private selMove = 0;
@@ -267,6 +315,20 @@ export class Game {
   }
 
   private makeHeroes(s: Stage): Hero[] {
+    // a saved party: the same heroes, grown as they were
+    if (this.pending) {
+      const saved = this.pending;
+      this.pending = null;
+      const hs = saved.map((m) => {
+        const h = new Hero(s, m.hero);
+        h.prog.restore(m.prog);
+        h.refreshStats();
+        h.hp = h.maxHp;
+        return h;
+      });
+      saved.forEach((m, i) => { if (m.cpu) hs[i].brain = new Brain(hs[i], hs[0]); });
+      return hs;
+    }
     const p1 = new Hero(s, this.choice);
     // ?auto: the computer plays player 1 too (for tests)
     if (new URLSearchParams(location.search).has('auto')) p1.brain = new Brain(p1, null);
@@ -285,7 +347,45 @@ export class Game {
     this.t = 0;
   }
 
-  /** Night falls: the bonus camp at the end of an area. */
+  /** A camp on the map: the night scene at the end of the area it follows. */
+  async enterCamp(n: number) {
+    this.go('loading');
+    const s = new Stage(n);
+    await s.load();
+    s.roam = false;
+    s.scripted = false;
+    // the arcade camera, held at the area's end (past its last scroll stop)
+    s.camx = s.camLimits[0];
+    s.stopIndex = s.data.stops.length - 1;
+    this.area = n;
+    if (!this.heroes.length) this.heroes = this.makeHeroes(s);
+    for (const h of this.heroes) {
+      h.stage = s;
+      h.dead = false;
+      h.gone = false;
+    }
+    s.heroes = this.heroes;
+    s.actors.push(...this.heroes);
+    this.stage = s;
+    this.startCamp();
+  }
+
+  /** Morning: rested (health and magic full), saved, and back to the map. */
+  private finishCamp() {
+    for (const h of this.heroes) {
+      h.hp = h.maxHp;
+      h.prog.mp = h.prog.maxMp;
+      if (h.state === 'gameover' || h.lives < 2) h.lives = 2;
+    }
+    const at = ROUTE.findIndex((p) => p.kind === 'camp' && p.area === this.area);
+    this.close(() => {
+      this.openWorld(at);
+      this.world!.t = -60;
+      this.toast('RESTED. JOURNEY SAVED');
+    });
+  }
+
+  /** Night falls: the camp. */
   startCamp() {
     const s = this.stage!;
     this.go('camp');
@@ -309,15 +409,6 @@ export class Game {
       h.setState('sleep', h.anims.lie);
     });
     s.actors.push(new Campfire(s, cx + 24, s.floorZ(cx + 24, cz + 2)));
-  }
-
-  private mapVideo = Object.assign(document.createElement('video'), { muted: true, playsInline: true, preload: 'auto' });
-
-  startMap() {
-    this.go('map');
-    // start loading while the view closes
-    this.mapVideo.src = `${import.meta.env.BASE_URL}assets/map${this.area + 1}.mp4`;
-    this.mapVideo.load();
   }
 
   /** The original's ending, rendered from a recording into a video with its music. */
@@ -346,15 +437,21 @@ export class Game {
   private drawSigns(s: Stage) {
     if (!s.roam || s.engaged) return;
     const [lo, hi] = s.camLimits;
-    if (s.camx >= hi && this.exitArea(-1) !== null) drawText(`< ${AREA_NAMES[this.area - 1]}`, 8, 44, '#ff0');
-    if (s.camx <= lo && this.exitArea(1) !== null) drawText(`${AREA_NAMES[this.area + 1]} >`, W - 8, 44, '#ff0', 'right');
+    if (s.camx >= hi && this.exitOpen(-1)) drawText('< MAP', 8, 44, '#ff0');
+    if (s.camx <= lo && this.exitOpen(1)) drawText('MAP >', W - 8, 44, '#ff0', 'right');
   }
 
+  /** A new journey: from the map's first place (or straight into ?area=n, for tests). */
   startGame() {
     this.heroes = [];
+    this.pending = null;
     this.visited.clear();
-    this.area = Number(new URLSearchParams(location.search).get('area') ?? 0);
-    void this.loadArea(this.area, true);
+    this.cleared.clear();
+    const area = new URLSearchParams(location.search).get('area');
+    if (area !== null) {
+      this.world = new WorldMap(this.cleared, placeOf(Number(area)));
+      void this.loadArea(Number(area), true);
+    } else this.openWorld(0);
   }
 
   /** Open an area, the heroes coming in from its left end (or its right, walking back). */
@@ -399,9 +496,20 @@ export class Game {
     switch (this.state) {
       case 'title': {
         if (assets.title) ctx.drawImage(assets.title, 0, 0);
-        if ((this.t >> 5) & 1) drawText(input.touch ? 'TAP TO START' : 'PRESS START', W / 2, 116, '#36f', 'center');
+        const saved = loadSave();
+        if (saved) {
+          const lead = saved.party[0];
+          ['CONTINUE', 'NEW GAME'].forEach((l, i) => {
+            const on = i === this.titleChoice;
+            drawText(`${on ? '> ' : ''}${l}${on ? ' <' : ''}`, W / 2, 112 + i * 14, on ? '#ff0' : '#36f', 'center');
+          });
+          drawText(`${HEROES[lead.hero].name.split(' ')[0]} LV${lead.prog.level}  ${ROUTE[Math.min(saved.at, ROUTE.length - 1)].name}`, W / 2, 144, '#8af', 'center');
+        } else if ((this.t >> 5) & 1) drawText(input.touch ? 'TAP TO START' : 'PRESS START', W / 2, 116, '#36f', 'center');
         break;
       }
+      case 'world':
+        this.world!.draw(this.party.map((m) => ({ hero: m.hero, prog: m.prog })));
+        break;
       case 'select': {
         // the original's skull, with the heroes standing on its hands
         if (assets.select) ctx.drawImage(assets.select, 0, 0);
@@ -428,26 +536,12 @@ export class Game {
       case 'loading':
         drawText('LOADING', W / 2, H / 2, '#888', 'center');
         break;
-      case 'map': {
-        if (this.t < 30) {
-          // close the stage into a shrinking box
-          this.stage!.draw();
-          const k = 1 - this.t / 30, bw = W * k, bh = H * k;
-          fillRect(0, 0, W, (H - bh) / 2, '#000');
-          fillRect(0, (H + bh) / 2, W, (H - bh) / 2 + 1, '#000');
-          fillRect(0, 0, (W - bw) / 2, H, '#000');
-          fillRect((W + bw) / 2, 0, (W - bw) / 2 + 1, H, '#000');
-        } else if (this.mapVideo.readyState >= 2) {
-          ctx.drawImage(this.mapVideo, 0, 0, W, H);
-        }
-        break;
-      }
       case 'camp':
         this.stage!.draw();
         drawHud(this.stage!, this.heroes, AREA_NAMES[this.area]);
         if (this.t < 240) {
-          drawText('BONUS STAGE', W / 2, 40, '#f80', 'center');
-          drawText('INCREASE YOUR POWERS', W / 2, 54, '#fff', 'center');
+          drawText(ROUTE.find((p) => p.kind === 'camp' && p.area === this.area)?.name ?? 'CAMP', W / 2, 40, '#f80', 'center');
+          drawText('REST UNTIL MORNING', W / 2, 54, '#fff', 'center');
         }
         if (this.paused) drawText('PAUSED', W / 2, 100, '#fff', 'center');
         break;
@@ -491,6 +585,7 @@ export class Game {
         drawText('GAME OVER', W / 2, H / 2, '#f22', 'center');
         break;
     }
+    if (this.state === 'title' || this.state === 'select') this.toastTimer = 0;
     if (this.toastTimer > 0 && !this.paused) {
       this.toastTimer--;
       fillRect(0, 26, W, 13, 'rgba(0,0,0,0.6)');

@@ -247,3 +247,17 @@ export function fillRect(x: number, y: number, w: number, h: number, color: stri
   ctx.fillStyle = color;
   ctx.fillRect(x, y, w, h);
 }
+
+/** Break text into lines of at most n characters, at spaces. */
+export function wrap(text: string, n: number): string[] {
+  const out: string[] = [];
+  let line = '';
+  for (const w of text.split(' ')) {
+    if (line && line.length + 1 + w.length > n) {
+      out.push(line);
+      line = w;
+    } else line = line ? `${line} ${w}` : w;
+  }
+  if (line) out.push(line);
+  return out;
+}

@@ -1,6 +1,10 @@
 // The RPG layer: damage numbers and scaled health, experience and levels, the character sheet's
-// skill trees, and spells costing magic. Tyris (?) is whoever the select screen starts on.
+// skill trees, and spells costing magic, for whichever hero the select screen starts on.
+localStorage.removeItem('ga-rpg.save');
+game.go('title'); advance(2);
 tap('Enter'); advance(20); tap('Enter');
+while (game.state !== 'world') await sleep(50);
+advance(30); tap('KeyJ');
 while (game.state !== 'play') await sleep(50);
 advance(40);
 const s = game.stage, h = game.heroes[0];
@@ -24,7 +28,6 @@ for (let i = 0; i < 400 && !e.dead && !e.gone; i++) {
 K('KeyJ', false); advance(5);
 log.push(['after kill', 'xp', h.prog.xp, 'level', h.prog.level, 'enemy dead', e.dead || e.gone]);
 // level up by experience
-mods.gainXp ? 0 : 0;
 const before = h.prog.level;
 while (h.prog.level < 4) {
   const k = foe(200); k.hp = 1; k.wound(h, 99);

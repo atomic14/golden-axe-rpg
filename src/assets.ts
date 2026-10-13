@@ -47,6 +47,8 @@ export const assets = {
   title: null as HTMLImageElement | null,
   /** the select screen's skull (tools/select-bg.ts) */
   select: null as HTMLImageElement | null,
+  /** the world map: the parchment from the story scenes, route painted out (work/maps, see README) */
+  world: null as HTMLImageElement | null,
   /** recorded spells: hero -> level -> tick -> sprites [frame, pal, flip, dx, dz, dy] */
   magic: {} as Record<string, number[][][][]>,
   /** AI-upscaled sprites (tools/upscale), loaded the first time HD art is switched on */
@@ -129,6 +131,7 @@ export async function loadAssets() {
   assets.tilePens = pens(await loadImage(`${BASE}tiles.png`), 32);
   assets.title = await loadImage(`${BASE}title.png`).catch(() => null);
   assets.select = await loadImage(`${BASE}select.png`).catch(() => null);
+  assets.world = await loadImage(`${BASE}world.png`).catch(() => null);
   assets.magic = await json('magic.json').catch(() => ({}));
 }
 
