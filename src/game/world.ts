@@ -48,6 +48,9 @@ export class WorldMap {
   /** which way it last walked: into an area from its left end (going on) or right (going back) */
   side: 'left' | 'right' = 'left';
   t = 0;
+  /** a locked place the party just tried to walk to (shown with why), and for how long */
+  private blocked = -1;
+  private blockedTimer = 0;
 
   constructor(public cleared: Set<number>, at = 0, side: 'left' | 'right' = 'left') {
     this.at = this.to = at;
@@ -69,6 +72,7 @@ export class WorldMap {
   /** Walk the route; returns the place the party chooses to go into. */
   update(): Place | null {
     this.t++;
+    if (this.blockedTimer > 0) this.blockedTimer--;
     if (this.t === 1) audio.music('map');
     const target = ROUTE[this.to];
     if (this.moving) {
@@ -85,7 +89,8 @@ export class WorldMap {
     }
     // along the route: on (right / down) or back (left / up)
     const dir = input.pad.x || input.pad.y;
-    if (dir && this.t > 15) this.walk(this.at + dir);
+    if (dir && dir !== this.lastDir && this.t > 15) this.walk(this.at + dir);
+    this.lastDir = dir;
     const tap = input.tapAt;
     if (tap) {
       const i = ROUTE.findIndex((p) => Math.hypot(p.x - tap.x, p.y - tap.y) < 12);
@@ -98,8 +103,17 @@ export class WorldMap {
     return null;
   }
 
+  private lastDir = 0;
+
   private walk(i: number) {
-    if (!this.open(i)) return;
+    if (i < 0 || i >= ROUTE.length) return;
+    if (!this.open(i)) {
+      this.blocked = i;
+      this.blockedTimer = 150;
+      audio.sfx('knock');
+      return;
+    }
+    this.blockedTimer = 0;
     this.side = i > this.at ? 'left' : 'right';
     this.to = i;
     audio.sfx('swing');
@@ -109,18 +123,23 @@ export class WorldMap {
     fillRect(0, 0, W, H, '#000');
     if (assets.world) ctx.drawImage(assets.world, 0, 0);
     // the route: walked stretches in red (as the original's quill drew it), the way on dotted
+    // (the way not yet open faintly, so the whole journey can be seen)
     for (let i = 0; i + 1 < ROUTE.length; i++) {
-      if (!this.open(i + 1)) continue;
       const a = ROUTE[i], b = ROUTE[i + 1];
-      const done = ROUTE[i + 1].kind === 'camp' ? this.cleared.has(ROUTE[i + 1].area) : this.cleared.has(b.area);
+      const open = this.open(i + 1);
+      const done = open && this.cleared.has(b.area);
       const n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 3);
       for (let k = 1; k < n; k++) {
         if (!done && k % 2) continue;
-        fillRect(Math.round(a.x + ((b.x - a.x) * k) / n), Math.round(a.y + ((b.y - a.y) * k) / n), 1, 1, '#c00');
+        fillRect(Math.round(a.x + ((b.x - a.x) * k) / n), Math.round(a.y + ((b.y - a.y) * k) / n), 1, 1, open ? '#c00' : 'rgba(70,40,20,0.8)');
       }
     }
     ROUTE.forEach((p, i) => {
-      if (!this.open(i)) return;
+      if (!this.open(i)) {
+        fillRect(p.x - 2, p.y - 2, 5, 5, 'rgba(60,40,20,0.6)');
+        if (i === this.blocked && this.blockedTimer > 0 && (this.t >> 3) & 1) fillRect(p.x - 3, p.y - 3, 7, 7, 'rgba(255,60,60,0.6)');
+        return;
+      }
       const c = p.kind === 'camp' ? '#f80' : this.cleared.has(p.area) ? '#fd0' : '#e00';
       fillRect(p.x - 3, p.y - 3, 7, 7, '#200');
       fillRect(p.x - 2, p.y - 2, 5, 5, c);
@@ -142,7 +161,13 @@ export class WorldMap {
     const status = p.kind === 'camp' ? 'REST AND SAVE' : this.cleared.has(p.area) ? 'CLEARED' : 'DANGER';
     drawText(status, x0, 24, p.kind === 'camp' ? '#8cf' : this.cleared.has(p.area) ? '#4f4' : '#f44');
     wrap(p.story, 19).forEach((l, i) => drawText(l, x0, 42 + i * 11, '#aac'));
-    party.forEach((m, i) => drawText(`${HEROES[m.hero].name.split(' ')[0]} LV${m.prog.level}`, x0, 150 + i * 11, '#fff'));
+    // tried to go somewhere locked: what opens it
+    if (this.blockedTimer > 0) {
+      const b = ROUTE[this.blocked];
+      const why = `THE WAY ON IS BLOCKED. DEFEAT THE BOSS OF ${AREA_NAMES[b.kind === 'camp' ? b.area : b.area - 1]} TO OPEN IT.`;
+      wrap(why, 19).forEach((l, i) => drawText(l, x0, 110 + i * 11, '#f66'));
+    }
+    party.forEach((m, i) => drawText(`${HEROES[m.hero].name.split(' ')[0]} LV${m.prog.level}`, x0, 160 + i * 11, '#fff'));
     const help = input.touch ? ['TAP A PLACE TO GO', 'TAP HERE TO ENTER'] : ['ARROWS: TRAVEL', 'ATTACK: ENTER'];
     help.forEach((l, i) => drawText(l, x0, 192 + i * 11, '#8af'));
   }

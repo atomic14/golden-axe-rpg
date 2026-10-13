@@ -5,7 +5,10 @@ game.go('title'); advance(2);
 tap('Enter'); advance(20); tap('Enter');
 while (game.state !== 'world') await sleep(50);
 advance(30);
-const log = [['new game', game.state, game.world.at]];
+const log = [['new game', game.state, game.world.at, game.party.map((m) => m.hero)]];
+// the way on is locked until the wilderness boss falls
+tap('ArrowRight'); advance(60);
+log.push(['locked: still at', game.world.at]);
 await shot('world-start');
 tap('KeyJ');
 while (game.state !== 'play') await sleep(50);

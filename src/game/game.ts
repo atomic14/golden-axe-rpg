@@ -11,7 +11,7 @@ import { Brain } from './partner';
 import { drawHud } from './hud';
 import { Thief, Campfire, CampPotion } from './props';
 import { Menu } from './menu';
-import { events } from './rpg';
+import { events, Progress } from './rpg';
 import { FloatText } from './fx';
 import { WorldMap, ROUTE, AREA_NAMES, placeOf, type Place } from './world';
 import { loadSave, writeSave, type SaveData } from './save';
@@ -314,28 +314,27 @@ export class Game {
     return SELECT_ORDER[(SELECT_ORDER.indexOf(this.choice) + 1) % 3];
   }
 
+  /** the party as chosen on the select screen, fresh */
+  private freshParty(): SaveData['party'] {
+    const fresh = (hero: number, cpu: boolean) => ({ hero, cpu, prog: new Progress(hero).snapshot() });
+    return [fresh(this.choice, false), ...(this.partner ? [fresh(this.partnerChoice, true)] : [])];
+  }
+
+  /** Make the heroes (they need a stage) from the party waiting for them, grown as they were. */
   private makeHeroes(s: Stage): Hero[] {
-    // a saved party: the same heroes, grown as they were
-    if (this.pending) {
-      const saved = this.pending;
-      this.pending = null;
-      const hs = saved.map((m) => {
-        const h = new Hero(s, m.hero);
-        h.prog.restore(m.prog);
-        h.refreshStats();
-        h.hp = h.maxHp;
-        return h;
-      });
-      saved.forEach((m, i) => { if (m.cpu) hs[i].brain = new Brain(hs[i], hs[0]); });
-      return hs;
-    }
-    const p1 = new Hero(s, this.choice);
+    const party = this.pending ?? this.freshParty();
+    this.pending = null;
+    const hs = party.map((m) => {
+      const h = new Hero(s, m.hero);
+      h.prog.restore(m.prog);
+      h.refreshStats();
+      h.hp = h.maxHp;
+      return h;
+    });
+    party.forEach((m, i) => { if (m.cpu) hs[i].brain = new Brain(hs[i], hs[0]); });
     // ?auto: the computer plays player 1 too (for tests)
-    if (new URLSearchParams(location.search).has('auto')) p1.brain = new Brain(p1, null);
-    if (!this.partner) return [p1];
-    const p2 = new Hero(s, this.partnerChoice);
-    p2.brain = new Brain(p2, p1);
-    return [p1, p2];
+    if (new URLSearchParams(location.search).has('auto')) hs[0].brain = new Brain(hs[0], null);
+    return hs;
   }
   /** an area opens out of a box, as the original does after the map */
   private opening = 0;
@@ -447,6 +446,8 @@ export class Game {
     this.pending = null;
     this.visited.clear();
     this.cleared.clear();
+    // the party as chosen (the heroes themselves are made on entering an area)
+    this.pending = this.freshParty();
     const area = new URLSearchParams(location.search).get('area');
     if (area !== null) {
       this.world = new WorldMap(this.cleared, placeOf(Number(area)));
