@@ -83,6 +83,8 @@ export class Hero extends Fighter {
   pad: Pad = { x: 0, y: 0, attack: false, jump: false, magic: false, run: false };
   /** the bizarrian being ridden */
   mount: Beast | null = null;
+  /** a beast kept for them (left at a camp, or in a save), ridden again in the next area */
+  stabled: Beast['type'] | null = null;
   /** no remounting straight after being thrown off */
   mountCooldown = 0;
   pressed = { attack: false, jump: false, magic: false };

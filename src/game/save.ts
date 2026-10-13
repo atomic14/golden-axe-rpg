@@ -9,7 +9,7 @@ const KEY = 'ga-rpg.save';
 export interface SaveData {
   v: 1;
   /** the player's hero, and the computer partner's (if any) */
-  party: { hero: number; cpu: boolean; prog: ProgressData }[];
+  party: { hero: number; cpu: boolean; prog: ProgressData; mount?: 'chicken' | 'blue' | 'red' | null }[];
   visited: number[];
   cleared: number[];
   /** the place on the route, and which end of an area they'd walk in at */

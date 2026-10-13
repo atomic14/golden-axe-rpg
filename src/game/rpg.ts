@@ -4,7 +4,7 @@
 import type { Fighter } from './fighter';
 import type { Hero } from './hero';
 import type { Enemy } from './enemy';
-import { WEAPON_BONUS, ARMOUR_GUARD } from './party';
+import { WEAPON_BONUS, ARMOUR_GUARD, bond, beastPower } from './party';
 
 /** the original's damage and health, multiplied up to RPG-sized numbers */
 export const POINTS = 5;
@@ -269,7 +269,7 @@ export function roll(from: Fighter | null, to: Fighter, raw: number, blow: Blow)
       if (hero.state === 'back' && p.rank('whirl')) { dmg *= 2; knock = true; }
       if (hero.state === 'dash' && p.rank('charge')) { dmg *= 1 + 0.5 * p.rank('charge'); knock = true; }
       if ((hero.state === 'grab' || hero.state === 'throw') && p.rank('grip')) dmg *= 1 + 0.5 * p.rank('grip');
-      if (hero.mount) dmg *= 1 + 0.4 * p.rank('beast');
+      if (hero.mount) dmg *= (1 + 0.4 * p.rank('beast')) * beastPower(bond(hero.mount.type).level);
       if (Math.random() < 0.05 + 0.07 * p.rank('crit')) { dmg *= 1.6; crit = true; }
       dmg *= 0.9 + Math.random() * 0.2;
     } else {

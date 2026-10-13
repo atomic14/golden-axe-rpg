@@ -5,10 +5,10 @@ import { audio } from '../audio';
 import { Fighter, type Anims } from './fighter';
 import type { Hero } from './hero';
 import type { Stage } from './stage';
-import { fillRect } from '../gfx';
+import { drawText, fillRect } from '../gfx';
 import { enemyLevel, enemyHpScale, gainXp, xpFor } from './rpg';
 import { FloatText } from './fx';
-import { party, goldFor } from './party';
+import { party, goldFor, lootItem, partyEvents, gearName, beastXp, GEAR_TIERS } from './party';
 import { questEvent } from './quests';
 
 export interface Kind {
@@ -88,6 +88,15 @@ export class Enemy extends Fighter {
   /** ticks the health bar stays up after a hit */
   private barTimer = 0;
   private rewarded = false;
+  /** a champion: tougher, glowing, and carrying treasure */
+  champion = false;
+
+  makeChampion() {
+    this.champion = true;
+    this.level += 2;
+    this.hp = this.maxHp = Math.round(this.maxHp * 2.5);
+    this.glow = '#fc0';
+  }
 
   constructor(stage: Stage, public kind: Kind, x: number, z: number, pal: number) {
     super(stage);
@@ -257,25 +266,49 @@ export class Enemy extends Fighter {
     return super.wound(...args);
   }
 
-  /** The party shares the experience. */
-  onKilled() {
+  /** The party shares the experience (and a beast that carried the blow learns from it). */
+  onKilled(by: Fighter | null) {
     if (this.rewarded || !this.hostile) return;
     this.rewarded = true;
-    const xp = xpFor(this);
+    const xp = xpFor(this) * (this.champion ? 3 : 1);
+    const rider = (by as Hero | null)?.isHero ? (by as Hero) : null;
+    if (rider?.mount) beastXp(rider.mount.type, xp);
     for (const h of this.stage.heroes) if (h.state !== 'gameover') gainXp(h, xp);
     this.stage.actors.push(new FloatText(this.stage, this, `+${xp} XP`, '#8f8', 72, 60));
     questEvent({ kind: 'kill', foe: this.kind.name });
-    const gold = goldFor(this.level, !this.kind.grabbable);
+    const gold = goldFor(this.level, !this.kind.grabbable || this.champion);
     party.gold += gold;
     this.stage.actors.push(new FloatText(this.stage, this, `+${gold}G`, '#fd0', 84, 60));
+    if (this.champion) this.loot();
+  }
+
+  /** A champion's treasure: something for the bag, and now and then better gear for a hero. */
+  private loot() {
+    const item = lootItem();
+    party.bag[item.id]++;
+    this.stage.actors.push(new FloatText(this.stage, this, item.name, '#8cf', 96, 75));
+    if (Math.random() > 0.35) return;
+    // gear a tier up, no better than this part of the journey warrants
+    const best = Math.min(GEAR_TIERS - 1, this.stage.area + 1);
+    const options = this.stage.heroes.flatMap((h) => [
+      ...(h.prog.weapon < best ? [{ h, slot: 'weapon' as const }] : []),
+      ...(h.prog.armour < best ? [{ h, slot: 'armour' as const }] : []),
+    ]);
+    const pick = options[Math.floor(Math.random() * options.length)];
+    if (!pick) return;
+    const tier = (pick.slot === 'weapon' ? pick.h.prog.weapon : pick.h.prog.armour) + 1;
+    if (pick.slot === 'weapon') pick.h.prog.weapon = tier;
+    else pick.h.prog.armour = tier;
+    partyEvents.found(`FOUND ${gearName(pick.slot, pick.h.index, tier)} FOR ${pick.h.def.name.split(' ')[0]}`);
   }
 
   draw() {
     super.draw();
-    // a health bar over its head for a while after each hit
-    if (this.barTimer <= 0 || this.dead || this.hp <= 0) return;
+    // a health bar over its head for a while after each hit (always, for a champion)
+    if ((this.barTimer <= 0 && !this.champion) || this.dead || this.hp <= 0) return;
     const [sx, sy] = this.screen();
     const w = 24, x = Math.round(sx - w / 2), y = Math.round(sy + this.box()[2] - this.y - 8);
+    if (this.champion) drawText('CHAMPION', sx, y - 10, '#fc0', 'center');
     fillRect(x - 1, y - 1, w + 2, 4, '#000');
     fillRect(x, y, Math.max(1, Math.round((w * this.hp) / this.maxHp)), 2, this.stun > 0 ? '#8cf' : this.burn > 0 ? '#f80' : '#e22');
   }

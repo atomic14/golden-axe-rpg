@@ -20,7 +20,8 @@ import { PEOPLE, ARRIVAL, VICTORY } from './story';
 import { Dialogue, type Overlay } from './talk';
 import { Shop } from './shop';
 import { conversation, questEvent, questEvents, resetQuests, log } from './quests';
-import { party, resetParty } from './party';
+import { party, resetParty, partyEvents } from './party';
+import { Beast } from './mount';
 
 export const AREAS = 5;
 
@@ -79,6 +80,7 @@ export class Game {
       if (!h.cpu) this.toast(`${h.def.name.split(' ')[0]} REACHED LEVEL ${h.prog.level}`);
     };
     questEvents.done = (q) => this.toast(`QUEST DONE: ${q.title}`);
+    partyEvents.found = (text) => this.toast(text);
   }
 
   /** Pause opens the character sheet; pause again closes it. */
@@ -300,7 +302,7 @@ export class Game {
 
   /** the party as it stands, for the map and the save: the heroes, or a saved party not yet made */
   get party(): SaveData['party'] {
-    if (this.heroes.length) return this.heroes.map((h) => ({ hero: h.index, cpu: h.cpu, prog: h.prog.snapshot() }));
+    if (this.heroes.length) return this.heroes.map((h) => ({ hero: h.index, cpu: h.cpu, prog: h.prog.snapshot(), mount: h.mount?.type ?? h.stabled }));
     return this.pending ?? [];
   }
 
@@ -364,6 +366,7 @@ export class Game {
     const hs = party.map((m) => {
       const h = new Hero(s, m.hero);
       h.prog.restore(m.prog);
+      h.stabled = m.mount ?? null;
       h.refreshStats();
       h.hp = h.maxHp;
       return h;
@@ -435,6 +438,8 @@ export class Game {
     const [cx, cz] = spots.length ? [spots[0][1], spots[0][2]] : [0x1000 - s.camx + 130, 0x1080];
     this.heroes.forEach((h, i) => {
       if (h.mount) {
+        // tethered for the night: ridden again in the next area
+        h.stabled = h.mount.type;
         h.mount.setRider(null);
         h.mount = null;
       }
@@ -505,6 +510,9 @@ export class Game {
     if (from === 'right') s.camx = s.camLimits[0];
     if (fresh || !this.heroes.length) this.heroes = this.makeHeroes(s);
     this.heroes.forEach((h, i) => {
+      // a beast being ridden (or kept at camp) comes along
+      const riding = h.mount?.type ?? h.stabled;
+      h.stabled = null;
       if (h.mount) {
         h.mount.setRider(null);
         h.mount = null;
@@ -520,6 +528,11 @@ export class Game {
       h.y = h.ground;
       h.facing = from === 'right' ? -1 : 1;
       h.setState('stand', h.anims.idle);
+      if (riding && !h.dead) {
+        const b = new Beast(s, riding, h.x, h.z, null);
+        s.actors.push(b);
+        h.mountBeast(b);
+      }
     });
     s.heroes = this.heroes;
     s.actors.push(...this.heroes);

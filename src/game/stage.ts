@@ -131,6 +131,7 @@ export class Stage {
         if (g <= 0xf00 || g >= 0x1480) continue;
         const [, , , param, init] = pool[Math.floor(Math.random() * pool.length)];
         const a = spawnActor(this, init, x, z, param);
+        if (a instanceof Enemy && a.kind.grabbable && Math.random() < 0.12) a.makeChampion();
         if (a) this.actors.push(a);
         break;
       }
@@ -308,6 +309,7 @@ export class Stage {
     while (this.spawnIndex < sp.length && this.progress >= sp[this.spawnIndex][0]) {
       const [, x, z, param, init] = sp[this.spawnIndex++];
       const a = spawnActor(this, init, x, z, param);
+      if (a instanceof Enemy && a.kind.grabbable && Math.random() < 0.06) a.makeChampion();
       if (a) this.actors.push(a);
     }
     // the boss fight at the end of the area: the sky changes

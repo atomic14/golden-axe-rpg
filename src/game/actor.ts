@@ -23,6 +23,8 @@ export abstract class Actor {
   gone = false;
   /** draw order tie-break and hit flash */
   flash = 0;
+  /** a colour that pulses over the sprite (champions) */
+  glow: string | null = null;
   blink = false;
   hp = 16;
   /** half-width used for wall collisions */
@@ -116,5 +118,6 @@ export abstract class Actor {
     if (this.blink && (this.stage.time >> 1) & 1) return;
     drawSprite(st[0], this.pal, fx, fy, this.flip);
     if (this.flash > 0) drawSpriteTinted(st[0], fx, fy, this.flip, '#fff', 0.6);
+    else if (this.glow) drawSpriteTinted(st[0], fx, fy, this.flip, this.glow, 0.15 + 0.12 * Math.sin(this.stage.time / 8));
   }
 }

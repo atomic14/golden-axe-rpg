@@ -17,8 +17,11 @@ it:
   freed (the original's villager sprites; gnome thieves turned traders). Talk with attack; traders
   sell food, tonics, elixirs and better weapons and armour for the gold foes drop; some townsfolk
   give quests. Each area has a few words on arrival and when its boss falls.
+- **Champions and beasts**: now and then a foe comes as a glowing champion, tougher and carrying
+  treasure (gold, things for the bag, sometimes better gear). Beasts grow with the foes beaten from
+  their backs, and one being ridden comes along to the next area (and through a night at camp).
 
-Tests for the new parts: `tests/roam.js`, `tests/rpg.js`, `tests/world.js`, `tests/town.js` (with
+Tests for the new parts: `tests/roam.js`, `tests/rpg.js`, `tests/world.js`, `tests/town.js`, `tests/loot.js` (with
 `npm run dev` running, `npx tsx tools/play.ts tests/world.js http://localhost:5173/`). The port's
 older tests in `tests/` drive the arcade flow and no longer apply.
 

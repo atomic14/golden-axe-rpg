@@ -38,17 +38,65 @@ export function gearDesc(slot: GearSlot, tier: number) {
   return slot === 'weapon' ? `+${Math.round(WEAPON_BONUS[tier] * 100)}% DAMAGE` : `-${Math.round(ARMOUR_GUARD[tier] * 100)}% DAMAGE TAKEN`;
 }
 
+/** The beasts the party has ridden, by kind: they grow with the foes beaten from their backs. */
+export type BeastKind = 'chicken' | 'blue' | 'red';
+export const BEAST_NAMES: Record<BeastKind, string> = { chicken: 'CHICKEN LEG', blue: 'BLUE DRAGON', red: 'RED DRAGON' };
+export interface BeastBond {
+  level: number;
+  xp: number;
+}
+/** experience a beast needs to grow from `level` */
+export function beastXpToNext(level: number) {
+  return 60 * level;
+}
+/** how much harder a beast of this level hits */
+export function beastPower(level: number) {
+  return 1 + 0.2 * (level - 1);
+}
+
 export interface PartyData {
   gold: number;
   bag: Record<ItemDef['id'], number>;
+  /** missing in saves from before mounts grew */
+  beasts?: Partial<Record<BeastKind, BeastBond>>;
 }
 
 /** The party's purse and bag (one journey at a time). */
-export const party: PartyData = { gold: 0, bag: { meat: 0, tonic: 0, elixir: 0 } };
+export const party: PartyData & { beasts: Partial<Record<BeastKind, BeastBond>> } = { gold: 0, bag: { meat: 0, tonic: 0, elixir: 0 }, beasts: {} };
 
 export function resetParty(d?: PartyData) {
   party.gold = d?.gold ?? 0;
   party.bag = { meat: 0, tonic: 0, elixir: 0, ...d?.bag };
+  party.beasts = structuredClone(d?.beasts ?? {});
+}
+
+export function bond(kind: BeastKind): BeastBond {
+  return (party.beasts[kind] ??= { level: 1, xp: 0 });
+}
+
+/** Raised for the game to show: treasure found, a beast grown. */
+export const partyEvents = {
+  found: (_text: string) => {},
+};
+
+/** A beast learns from a fight won on its back; returns true if it grew. */
+export function beastXp(kind: BeastKind, xp: number): boolean {
+  const b = bond(kind);
+  b.xp += xp;
+  let grew = false;
+  while (b.level < 10 && b.xp >= beastXpToNext(b.level)) {
+    b.xp -= beastXpToNext(b.level);
+    b.level++;
+    grew = true;
+  }
+  if (grew) partyEvents.found(`${BEAST_NAMES[kind]} GREW TO LEVEL ${b.level}`);
+  return grew;
+}
+
+/** A champion's treasure: something for the bag. */
+export function lootItem(): ItemDef {
+  const r = Math.random();
+  return ITEMS[r < 0.45 ? 0 : r < 0.9 ? 1 : 2];
 }
 
 /** gold a foe of this level carries */

@@ -5,7 +5,7 @@ import { input } from '../input';
 import type { Hero } from './hero';
 import type { Stage } from './stage';
 import { xpToNext } from './rpg';
-import { party } from './party';
+import { party, bond, BEAST_NAMES } from './party';
 
 function bar(x: number, y: number, w: number, h: number, v: number, max: number, color: string) {
   fillRect(x - 1, y - 1, w + 2, h + 2, '#000');
@@ -28,6 +28,7 @@ export function drawHud(stage: Stage, heroes: Hero[], areaName: string) {
     const x0 = 12 + i * 160;
     const p = h.prog;
     drawText(`LV${p.level}`, x0, 190, '#ff0');
+    if (h.mount) drawText(`${BEAST_NAMES[h.mount.type]} LV${bond(h.mount.type).level}`, x0, 180, '#8f8');
     drawText(`${Math.max(0, Math.ceil(h.hp))}`, x0 + 96, 190, h.hp < h.maxHp / 4 ? '#f44' : '#fff', 'right');
     bar(x0, 200, 96, 5, h.hp, h.maxHp, h.hp < h.maxHp / 4 ? '#e22' : '#2c4');
     bar(x0, 208, 96, 3, p.mp, p.maxMp, '#38f');

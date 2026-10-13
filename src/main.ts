@@ -10,6 +10,7 @@ import { Thief } from './game/props';
 import { Brain } from './game/partner';
 import { Filter } from './filter';
 import { party } from './game/party';
+import { Beast } from './game/mount';
 import * as quests from './game/quests';
 
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
@@ -50,7 +51,7 @@ async function boot() {
     game,
     audio,
     // for tests that set up fights (the same module instances the game uses)
-    mods: { Enemy, KINDS, spawnActor, Thief, Brain, drawSprite, anim, ctx, party, quests },
+    mods: { Enemy, KINDS, spawnActor, Thief, Brain, drawSprite, anim, ctx, party, quests, Beast },
     filter,
     advance(n: number) {
       for (let i = 0; i < n; i++) {
