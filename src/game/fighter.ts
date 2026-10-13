@@ -2,6 +2,8 @@
 // lying and getting up.
 import { Actor } from './actor';
 import type { Stage } from './stage';
+import { FloatText } from './fx';
+import { roll, landed, type Blow } from './rpg';
 
 /** Animation roles; every fighter maps them to ROM scripts. */
 export interface Anims {
@@ -79,10 +81,34 @@ export abstract class Fighter extends Actor {
     return false;
   }
 
+  /**
+   * Lose health to a blow, by the RPG's sums (rpg.roll) from `raw`, the original's damage; the
+   * number floats up. Returns what it took and whether the blow knocks down regardless.
+   */
+  wound(from: Fighter | null, raw: number, blow: Blow = 'melee'): { dmg: number; knock: boolean } {
+    const r = roll(from, this, raw, blow);
+    const dmg = this.limitDamage(r.dmg);
+    this.hp = Math.max(0, this.hp - dmg);
+    const color = blow === 'burn' ? '#f80' : this.isHero ? '#f44' : r.crit ? '#ff0' : blow === 'magic' ? '#8cf' : '#fff';
+    this.stage.actors.push(new FloatText(this.stage, this, r.crit ? `${dmg}!` : String(dmg), color));
+    landed(from, dmg, blow);
+    if (from) this.lastHitBy = from;
+    if (this.hp <= 0) this.onKilled(from);
+    return { dmg, knock: r.knock };
+  }
+
+  /** a last chance to lessen a blow (the hero's Last Stand) */
+  limitDamage(dmg: number) {
+    return dmg;
+  }
+
+  /** health ran out (for rewards); called once per blow that leaves it at 0 */
+  onKilled(_by: Fighter | null) {}
+
   /** Receive a hit. `knock` sends the fighter flying. Returns true if it landed. */
   takeHit(from: Fighter, dmg: number, knock = false): boolean {
     if (!this.vulnerable) return false;
-    this.hp = Math.max(0, this.hp - dmg);
+    if (this.wound(from, dmg).knock) knock = true;
     this.lastHitBy = from;
     this.flash = 3;
     this.heldBy = null;

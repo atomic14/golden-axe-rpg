@@ -10,6 +10,8 @@ import { Fighter } from './fighter';
 import { assets } from '../assets';
 import { MagicEffect } from './magic';
 import { Enemy, KINDS } from './enemy';
+import { SPELLS, spellDamage } from './rpg';
+import { FloatText } from './fx';
 
 export const END = 0x14c0;
 
@@ -223,25 +225,43 @@ export class Stage {
   }
 
   /** Start a hero's spell: the original's effect replayed around them, then damage at its peak. */
-  castMagic(h: Hero, level: number): number {
+  castMagic(h: Hero, spell: number): number {
     const names = ['ax', 'tyris', 'gilius'];
-    const ticks = assets.magic[names[h.index]]?.[level - 1] ?? [];
-    const fx = new MagicEffect(this, h, ticks, level);
+    const ticks = assets.magic[names[h.index]]?.[SPELLS[h.index][spell].tier - 1] ?? [];
+    const fx = new MagicEffect(this, h, ticks, spell);
     this.actors.push(fx);
     this.freezeFor(fx.length, h);
     return fx.length;
   }
 
-  /** Damage every enemy on screen; strength grows with the potions spent. */
-  magicDamage(h: Hero, level: number) {
-    const dmg = [0, 4, 8, 16, 24, 32, 48][level] ?? 16;
+  /** A spell lands: damage (and burning or stunning) for the foes in its reach; some heal. */
+  magicDamage(h: Hero, index: number) {
+    const spell = SPELLS[h.index][index];
+    const dmg = spellDamage(h, spell, index);
     for (const a of this.actors) {
       if (!a.isEnemy || !(a instanceof Fighter) || !a.vulnerable || !a.hostile) continue;
-      const sx = a.x - 0x1000 + this.camx + 8;
+      const sx = a.x - this.left;
       if (sx < -20 || sx > 340) continue;
-      a.hp = Math.max(0, a.hp - dmg);
+      if (spell.radius && Math.hypot(a.x - h.x, (a.z - h.z) * 2) > spell.radius) continue;
+      a.wound(h, dmg, 'magic');
       a.flash = 6;
-      a.knockDown(a.x > h.x ? 1 : -1, 1.5, 4);
+      if (a instanceof Enemy) {
+        if (spell.burn) {
+          a.burn = spell.burn;
+          a.burnDamage = Math.max(1, Math.round(dmg * 0.12));
+        }
+        if (spell.stun && a.hp > 0) a.stun = spell.stun;
+      }
+      // stunning spells leave them standing, dazed; the rest knock them flying
+      if (!spell.stun || a.hp <= 0) a.knockDown(a.x > h.x ? 1 : -1, 1.5, 4);
+    }
+    if (spell.heal) {
+      for (const o of this.heroes) {
+        if (o.dead || o.state === 'gameover') continue;
+        const n = Math.round(o.maxHp * spell.heal);
+        o.hp = Math.min(o.maxHp, o.hp + n);
+        this.actors.push(new FloatText(this, o, `+${n}`, '#4f4'));
+      }
     }
   }
 

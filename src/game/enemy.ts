@@ -5,6 +5,9 @@ import { audio } from '../audio';
 import { Fighter, type Anims } from './fighter';
 import type { Hero } from './hero';
 import type { Stage } from './stage';
+import { fillRect } from '../gfx';
+import { enemyLevel, enemyHpScale, gainXp, xpFor } from './rpg';
+import { FloatText } from './fx';
 
 export interface Kind {
   name: string;
@@ -72,6 +75,17 @@ export class Enemy extends Fighter {
   attackIndex = 0;
   /** walk in from off screen before fighting */
   entering = true;
+  /** how tough it is: health, damage and the experience it's worth grow with it */
+  level: number;
+  maxHp: number;
+  /** ticks left stunned (by magic), and seconds left burning */
+  stun = 0;
+  burn = 0;
+  burnDamage = 0;
+  private burnTick = 0;
+  /** ticks the health bar stays up after a hit */
+  private barTimer = 0;
+  private rewarded = false;
 
   constructor(stage: Stage, public kind: Kind, x: number, z: number, pal: number) {
     super(stage);
@@ -79,7 +93,8 @@ export class Enemy extends Fighter {
     this.x = x;
     this.z = z;
     this.y = this.ground;
-    this.hp = kind.hp;
+    this.level = enemyLevel(stage.area);
+    this.hp = this.maxHp = Math.round(kind.hp * enemyHpScale(this.level));
     this.pal = pal;
     this.radius = kind.size ?? 8;
     this.facing = x > 0x1000 - stage.camx + 160 ? -1 : 1;
@@ -94,7 +109,16 @@ export class Enemy extends Fighter {
 
   update() {
     if (this.stage.frozen && this.stage.frozen !== this) return;
+    if (this.barTimer > 0) this.barTimer--;
+    this.updateBurn();
     if (this.updateCommon()) return;
+    // stunned: stands dazed, flashing
+    if (this.stun > 0 && (this.state === 'stand' || this.state === 'walk' || this.state === 'run')) {
+      this.stun--;
+      if (this.state !== 'stand') this.setState('stand', this.anims.idle);
+      if (this.stun % 16 === 0) this.flash = 3;
+      return;
+    }
     if (this.kind.mount) {
       this.anim.tick();
       return;
@@ -212,6 +236,42 @@ export class Enemy extends Fighter {
 
   onHit() {
     this.cooldown = Math.max(this.cooldown, 24);
+  }
+
+  /** burning: a little damage every second, without flinching */
+  private updateBurn() {
+    if (this.burn <= 0 || this.dead) return;
+    if (++this.burnTick < 60) return;
+    this.burnTick = 0;
+    this.burn--;
+    if (this.hp <= 0) return;
+    this.wound(null, this.burnDamage, 'burn');
+    this.barTimer = 120;
+    if (this.hp <= 0 && !['fly', 'down', 'dying'].includes(this.state)) this.knockDown(this.facing > 0 ? -1 : 1, 1, 3);
+  }
+
+  wound(...args: Parameters<Fighter['wound']>) {
+    this.barTimer = 120;
+    return super.wound(...args);
+  }
+
+  /** The party shares the experience. */
+  onKilled() {
+    if (this.rewarded || !this.hostile) return;
+    this.rewarded = true;
+    const xp = xpFor(this);
+    for (const h of this.stage.heroes) if (h.state !== 'gameover') gainXp(h, xp);
+    this.stage.actors.push(new FloatText(this.stage, this, `+${xp} XP`, '#8f8', 72, 60));
+  }
+
+  draw() {
+    super.draw();
+    // a health bar over its head for a while after each hit
+    if (this.barTimer <= 0 || this.dead || this.hp <= 0) return;
+    const [sx, sy] = this.screen();
+    const w = 24, x = Math.round(sx - w / 2), y = Math.round(sy + this.box()[2] - this.y - 8);
+    fillRect(x - 1, y - 1, w + 2, 4, '#000');
+    fillRect(x, y, Math.max(1, Math.round((w * this.hp) / this.maxHp)), 2, this.stun > 0 ? '#8cf' : this.burn > 0 ? '#f80' : '#e22');
   }
 
   /** knocked flying: the whoosh, and the kind's scream if the blow killed */

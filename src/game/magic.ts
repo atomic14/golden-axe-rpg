@@ -1,5 +1,6 @@
 // Spells replay the original's effect objects tick by tick around the caster (recorded with
-// tools/mame/magic.lua, see tools/magic.ts). Damage lands when the most effects are on screen.
+// tools/mame/magic.lua, see tools/magic.ts). The spell (rpg.SPELLS) lands when the most effects are
+// on screen.
 import { drawSprite } from '../gfx';
 import { audio } from '../audio';
 import { Actor } from './actor';
@@ -10,7 +11,7 @@ export class MagicEffect extends Actor {
   tick = 0;
   peak: number;
 
-  constructor(stage: Stage, public caster: Hero, public ticks: number[][][], public level: number) {
+  constructor(stage: Stage, public caster: Hero, public ticks: number[][][], public spell: number) {
     super(stage);
     this.x = caster.x;
     this.z = caster.z + 0.5;
@@ -27,7 +28,7 @@ export class MagicEffect extends Actor {
 
   update() {
     this.tick++;
-    if (this.tick === this.peak) this.stage.magicDamage(this.caster, this.level);
+    if (this.tick === this.peak) this.stage.magicDamage(this.caster, this.spell);
     if (this.tick >= this.length) this.gone = true;
   }
 

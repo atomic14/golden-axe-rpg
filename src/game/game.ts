@@ -9,6 +9,9 @@ import { Hero, HEROES } from './hero';
 import { Brain } from './partner';
 import { drawHud } from './hud';
 import { Thief, Campfire, CampPotion } from './props';
+import { Menu } from './menu';
+import { events } from './rpg';
+import { FloatText } from './fx';
 
 export const AREAS = 5;
 /** what the signs at an area's ends call the areas */
@@ -48,6 +51,24 @@ export class Game {
   visited = new Set<number>();
   /** where the heroes are heading when they walk off an area's end */
   private travelTo: { area: number; from: 'left' | 'right' } | null = null;
+  /** the character sheet, open while paused */
+  menu: Menu | null = null;
+
+  constructor() {
+    events.levelUp = (h) => {
+      audio.sfx('pickup');
+      const s = this.stage;
+      if (s) s.actors.push(new FloatText(s, h, 'LEVEL UP!', '#ff0', 84, 90));
+      if (!h.cpu) this.toast(`${h.def.name.split(' ')[0]} REACHED LEVEL ${h.prog.level}`);
+    };
+  }
+
+  /** Pause opens the character sheet; pause again closes it. */
+  private togglePause() {
+    this.paused = !this.paused;
+    const p = this.players[0];
+    this.menu = this.paused && p ? new Menu(p) : null;
+  }
 
   update() {
     this.t++;
@@ -80,8 +101,11 @@ export class Game {
         break;
       }
       case 'play': {
-        if (pr.pause) this.paused = !this.paused;
-        if (this.paused) return;
+        if (pr.pause) this.togglePause();
+        if (this.paused) {
+          this.menu?.update();
+          return;
+        }
         const s = this.stage!;
         if (this.opening > 0) this.opening--;
         s.update();
@@ -420,7 +444,7 @@ export class Game {
       }
       case 'camp':
         this.stage!.draw();
-        drawHud(this.stage!, this.heroes);
+        drawHud(this.stage!, this.heroes, AREA_NAMES[this.area]);
         if (this.t < 240) {
           drawText('BONUS STAGE', W / 2, 40, '#f80', 'center');
           drawText('INCREASE YOUR POWERS', W / 2, 54, '#fff', 'center');
@@ -439,7 +463,7 @@ export class Game {
       case 'play':
       case 'clear':
         this.stage!.draw();
-        drawHud(this.stage!, this.heroes);
+        drawHud(this.stage!, this.heroes, AREA_NAMES[this.area]);
         if (this.state === 'play') this.drawSigns(this.stage!);
         if (this.state === 'clear') drawText('STAGE CLEAR', W / 2, 90, '#ff0', 'center');
         if (this.opening > 0) {
@@ -449,11 +473,14 @@ export class Game {
           fillRect(0, 0, (W - bw) / 2, H, '#000');
           fillRect((W + bw) / 2, 0, (W - bw) / 2 + 1, H, '#000');
         }
-        if (this.paused) drawText('PAUSED', W / 2, 100, '#fff', 'center');
+        if (this.paused) {
+          if (this.menu) this.menu.draw();
+          else drawText('PAUSED', W / 2, 100, '#fff', 'center');
+        }
         break;
       case 'continue': {
         this.stage!.draw();
-        drawHud(this.stage!, this.heroes);
+        drawHud(this.stage!, this.heroes, AREA_NAMES[this.area]);
         fillRect(0, 70, W, 70, 'rgba(0,0,0,0.6)');
         drawText('CONTINUE?', W / 2, 84, '#ff0', 'center');
         drawText(String(9 - Math.floor(this.t / 60)), W / 2, 100, '#fff', 'center');
@@ -464,7 +491,7 @@ export class Game {
         drawText('GAME OVER', W / 2, H / 2, '#f22', 'center');
         break;
     }
-    if (this.toastTimer > 0) {
+    if (this.toastTimer > 0 && !this.paused) {
       this.toastTimer--;
       fillRect(0, 26, W, 13, 'rgba(0,0,0,0.6)');
       drawText(this.toastText, W / 2, 29, '#ff0', 'center');

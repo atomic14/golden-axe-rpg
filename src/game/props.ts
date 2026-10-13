@@ -5,6 +5,7 @@ import { Actor } from './actor';
 import { Fighter, type Anims } from './fighter';
 import type { Hero } from './hero';
 import type { Stage } from './stage';
+import { FloatText } from './fx';
 
 const THIEF: Anims = {
   idle: 0x1873a, walk: 0x1876a, attacks: [], hurt: [0x189aa], fly: 0x189aa, collapse: 0x189aa, getup: 0x18a3a, lie: 0x189aa,
@@ -161,8 +162,15 @@ export class Item extends Actor {
     if (this.life <= 0) this.gone = true;
     for (const h of this.stage.heroes as Hero[]) {
       if (h.dead || !h.mayTake(this) || Math.abs(h.x - this.x) > 14 || Math.abs(h.z - this.z) > 8 || this.y < this.ground - 2) continue;
-      if (this.type === 'potion') h.potions = Math.min(h.def.magicLevels, h.potions + 1);
-      else h.hp = Math.min(h.maxHp, h.hp + 16);
+      // a magic pot refills some magic; food some health
+      if (this.type === 'potion') {
+        h.prog.mp = Math.min(h.prog.maxMp, h.prog.mp + 12);
+        this.stage.actors.push(new FloatText(this.stage, h, '+12 MP', '#8cf'));
+      } else {
+        const n = Math.round(h.maxHp * 0.3);
+        h.hp = Math.min(h.maxHp, h.hp + n);
+        this.stage.actors.push(new FloatText(this.stage, h, `+${n}`, '#4f4'));
+      }
       audio.sfx('pickup');
       this.gone = true;
       break;

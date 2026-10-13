@@ -84,8 +84,8 @@ export class Brain {
   /** Items: the leader comes first unless it doesn't need it. */
   wants(item: Item): boolean {
     const h = this.hero, l = this.leaderIn;
-    if (item.type === 'potion') return h.potions < h.def.magicLevels && (!l || l.potions >= l.def.magicLevels);
-    return h.hp < h.maxHp && (!l || l.hp >= l.maxHp || h.hp + 8 < l.hp);
+    if (item.type === 'potion') return h.prog.mp < h.prog.maxMp && (!l || l.prog.mp >= l.prog.maxMp - 6);
+    return h.hp < h.maxHp && (!l || l.hp >= l.maxHp || h.hp + l.maxHp / 6 < l.hp);
   }
 
   /** Beasts: only once the leader has one, or is nowhere near this one. */
@@ -134,9 +134,9 @@ export class Brain {
     }
     this.target = best;
     // magic when crowded, or to save the leader
-    if (this.magic && h.potions > 0 && !s.frozen) {
+    if (this.magic && h.canCast && !s.frozen) {
       const near = hostile.filter((f) => Math.abs(f.x - h.x) < 120).length;
-      this.wantMagic = near >= 3 || (near >= 2 && (h.hp < 16 || (!!l && l.hp < 12)));
+      this.wantMagic = near >= 3 || (near >= 2 && (h.hp < h.maxHp / 3 || (!!l && l.hp < l.maxHp / 4)));
     }
     let goal: [number, number] | null = null;
     // dodge a fireball coming our way

@@ -9,6 +9,7 @@ import type { Stage } from './stage';
 import type { Beast } from './mount';
 import type { Brain } from './partner';
 import type { Item } from './props';
+import { Progress, SPELLS, lastStand, regenerate } from './rpg';
 
 export interface HeroDef {
   name: string;
@@ -55,6 +56,8 @@ export class Hero extends Fighter {
   def: HeroDef;
   hp = 48;
   maxHp = 48;
+  /** levels, experience, skills and magic */
+  prog: Progress;
   lives = 2;
   // the original starts with none (player 1's count is 0xffe030); thieves bring them
   potions = 0;
@@ -91,7 +94,31 @@ export class Hero extends Fighter {
     this.def = HEROES[index];
     this.anims = this.def.anims;
     this.pal = this.def.pal;
+    this.prog = new Progress(index);
+    this.refreshStats();
+    this.hp = this.maxHp;
+    this.prog.mp = this.prog.maxMp;
     this.setState('stand', this.anims.idle);
+  }
+
+  /** Recompute what levels and skills give (after a level up or a skill learned). */
+  refreshStats() {
+    this.maxHp = this.prog.maxHp();
+    this.hp = Math.min(this.hp, this.maxHp);
+    this.prog.mp = Math.min(this.prog.mp, this.prog.maxMp);
+  }
+
+  /** the equipped spell */
+  get spell() {
+    return SPELLS[this.index][this.prog.spell];
+  }
+
+  get canCast() {
+    return this.prog.mp >= this.spell.mp;
+  }
+
+  limitDamage(dmg: number) {
+    return lastStand(this, dmg);
   }
 
   get enemies(): Fighter[] {
@@ -154,6 +181,7 @@ export class Hero extends Fighter {
       if (g.state === 'thrown') g.knockDown(this.facing, 1, 2);
     }
     this.clampToScreen();
+    regenerate(this, this.stage.engaged);
     this.readPad();
     if (this.comboTimer > 0 && --this.comboTimer === 0) this.combo = 0;
     if (!this.brain) input.running = this.state === 'run';
@@ -179,7 +207,7 @@ export class Hero extends Fighter {
           this.playMove(this.anims.back);
           break;
         }
-        if (this.pressed.magic && this.potions > 0) return this.castMagic();
+        if (this.pressed.magic && this.canCast) return this.castMagic();
         if (this.pressed.attack) {
           if (this.state === 'run') return this.dashAttack();
           return this.attack();
@@ -288,7 +316,7 @@ export class Hero extends Fighter {
         const knee = attackOf(this.anim.addr);
         if (knee && this.anim.stepped && this.anim.index === knee[2]) {
           this.knees++;
-          g.hp = Math.max(0, g.hp - knee[1]);
+          g.wound(this, knee[1]);
           g.flash = 3;
           audio.sfx('hit');
         }
@@ -354,8 +382,7 @@ export class Hero extends Fighter {
 
   /** Knocked off a mount: fall like any other knockdown. */
   takeHitDirect(from: Fighter, dmg: number, dir: number) {
-    this.hp = Math.max(0, this.hp - dmg);
-    this.lastHitBy = from;
+    this.wound(from, dmg);
     this.y = this.mount ? this.mount.y - 24 : this.y - 24;
     this.knockDown(dir, 2, 3);
     audio.sfx('hurt');
@@ -481,8 +508,7 @@ export class Hero extends Fighter {
     g.heldBy = null;
     g.x = this.x + this.facing * 12;
     g.y = this.y - 48;
-    g.hp = Math.max(0, g.hp - (attackOf(this.anims.throw)?.[1] ?? 4));
-    g.lastHitBy = this;
+    g.wound(this, attackOf(this.anims.throw)?.[1] ?? 4);
     g.facing = -this.facing;
     g.vx = this.facing * 3;
     g.vz = 0;
@@ -508,10 +534,10 @@ export class Hero extends Fighter {
   magicTime = 0;
 
   castMagic() {
-    const level = Math.min(this.potions, this.def.magicLevels);
-    this.potions = 0;
+    const spell = this.spell;
+    this.prog.mp -= spell.mp;
     this.setState('magic', this.anims.magic);
-    this.magicTime = this.stage.castMagic(this, level);
+    this.magicTime = this.stage.castMagic(this, this.prog.spell);
   }
 
   /** Walking off a ledge drops you; pits have a ground far below. */

@@ -1,31 +1,40 @@
-// The heads-up display: stage number and magic pots at the top, health bars, lives and the
-// portrait at the bottom, laid out like the original's text layer.
+// The heads-up display: the area and the equipped spell at the top; each hero's level, health,
+// magic and experience at the bottom beside their portrait.
 import { ctx, drawSprite, drawText, fillRect } from '../gfx';
+import { input } from '../input';
 import type { Hero } from './hero';
 import type { Stage } from './stage';
+import { xpToNext } from './rpg';
 
-export function drawHud(stage: Stage, heroes: Hero[]) {
-  drawText(`STAGE ${stage.shown}`, 16, 16, '#f80');
+function bar(x: number, y: number, w: number, h: number, v: number, max: number, color: string) {
+  fillRect(x - 1, y - 1, w + 2, h + 2, '#000');
+  fillRect(x, y, w, h, '#223');
+  if (v > 0) fillRect(x, y, Math.max(1, Math.round((w * Math.min(v, max)) / max)), h, color);
+}
+
+export function drawHud(stage: Stage, heroes: Hero[], areaName: string) {
+  drawText(areaName, 8, 6, '#f80');
+  const p1 = heroes.find((h) => !h.cpu) ?? heroes[0];
+  if (p1) {
+    const s = p1.spell;
+    drawText(`${s.name} ${s.mp}MP`, 312, 6, p1.canCast ? '#8cf' : '#646', 'right');
+    if (p1.prog.points > 0 && (stage.time >> 5) & 1) {
+      drawText(`SKILL POINT! ${input.touch ? 'TAP II' : 'PRESS P'}`, 160, 18, '#ff0', 'center');
+    }
+  }
   heroes.forEach((h, i) => {
-    const x0 = 56 + i * 144;
-    // magic: one jar per potion, out of the hero's maximum level
-    drawText('MAGIC', 104 + i * 96, 2, '#f44');
-    for (let k = 0; k < h.def.magicLevels; k++) {
-      const x = 104 + i * 96 + k * 8, y = 11;
-      fillRect(x, y, 7, 10, k < h.potions ? '#36f' : '#a00');
-      if (k < h.potions) fillRect(x + 2, y + 1, 3, 3, '#9cf');
-    }
-    // health: three bars of 16
-    for (let b = 0; b < 3; b++) {
-      const v = Math.max(0, Math.min(16, h.hp - b * 16));
-      fillRect(x0 + b * 24, 205, 22, 8, '#002');
-      if (v > 0) fillRect(x0 + b * 24 + 1, 206, Math.round((20 * v) / 16), 6, '#22f');
-    }
-    drawText(String(Math.max(0, h.lives)), x0 + 76, 205, '#ff0');
-    if (h.cpu && heroes.some((o) => !o.cpu)) drawText('CPU', x0, 195, '#8af');
+    const x0 = 12 + i * 160;
+    const p = h.prog;
+    drawText(`LV${p.level}`, x0, 190, '#ff0');
+    drawText(`${Math.max(0, Math.ceil(h.hp))}`, x0 + 96, 190, h.hp < h.maxHp / 4 ? '#f44' : '#fff', 'right');
+    bar(x0, 200, 96, 5, h.hp, h.maxHp, h.hp < h.maxHp / 4 ? '#e22' : '#2c4');
+    bar(x0, 208, 96, 3, p.mp, p.maxMp, '#38f');
+    bar(x0, 214, 96, 1, p.xp, xpToNext(p.level), '#dd4');
+    drawText(String(Math.max(0, h.lives)), x0 + 104, 205, '#ff0');
+    if (h.cpu && heroes.some((o) => !o.cpu)) drawText('CPU', x0 + 40, 190, '#8af');
     // the portrait at half size, as the original shows it
     ctx.save();
-    ctx.translate(x0 + 98, 214);
+    ctx.translate(x0 + 128, 214);
     ctx.scale(0.5, 0.5);
     drawSprite(h.def.face, h.def.pal, 0, 0, false);
     ctx.restore();

@@ -126,9 +126,8 @@ export class Beast extends Fighter {
     } else {
       const e = r as EnemyRider;
       const foot = new Enemy(this.stage, KINDS[e.kind], this.x, this.z, e.pal);
-      foot.hp = Math.max(0, e.hp - dmg);
       foot.y = this.y - 20;
-      foot.lastHitBy = from;
+      foot.wound(from, dmg);
       foot.entering = false;
       foot.knockDown(dir, 2, 3);
       this.stage.actors.push(foot);
