@@ -1,4 +1,5 @@
-// Game flow: title, character select, the five areas, game over.
+// Game flow: title, character select, the five areas (roamed both ways, walking off an end into
+// the next), game over.
 import { input } from '../input';
 import { assets } from '../assets';
 import { audio } from '../audio';
@@ -10,6 +11,8 @@ import { drawHud } from './hud';
 import { Thief, Campfire, CampPotion } from './props';
 
 export const AREAS = 5;
+/** what the signs at an area's ends call the areas */
+export const AREA_NAMES = ['WILDERNESS', 'TURTLE VILLAGE', 'STONE TOWN', 'EAGLE ISLAND', 'THE CASTLE'];
 
 /** settings kept between visits (storage can be unavailable: private windows, blocked sites) */
 function load(key: string): string | null {
@@ -29,7 +32,7 @@ function save(key: string, value: string) {
 /** hero indices from left to right on the select screen */
 const SELECT_ORDER = [2, 0, 1];
 
-type State = 'title' | 'select' | 'loading' | 'play' | 'clear' | 'camp' | 'map' | 'continue' | 'gameover' | 'ending';
+type State = 'title' | 'select' | 'loading' | 'play' | 'travel' | 'clear' | 'camp' | 'map' | 'continue' | 'gameover' | 'ending';
 
 export class Game {
   state: State = 'title';
@@ -41,6 +44,10 @@ export class Game {
   paused = false;
   /** a computer-controlled second player (chosen on the select screen, remembered) */
   partner = load('ga.partner') === 'on' || new URLSearchParams(location.search).has('cpu');
+  /** areas the heroes have been to (their scripted fights only play the first time) */
+  visited = new Set<number>();
+  /** where the heroes are heading when they walk off an area's end */
+  private travelTo: { area: number; from: 'left' | 'right' } | null = null;
 
   update() {
     this.t++;
@@ -78,7 +85,14 @@ export class Game {
         const s = this.stage!;
         if (this.opening > 0) this.opening--;
         s.update();
-        if (s.progress >= 0x1431 && !this.bossMusic) {
+        if (s.roam && s.scripted && s.progress >= END && !s.enemiesAlive && s.spawnIndex >= s.data.spawns.length && !this.areaCleared) {
+          this.areaCleared = true;
+          if (this.area + 1 < AREAS) this.toast(`THE WAY TO ${AREA_NAMES[this.area + 1]} IS OPEN`);
+          else this.go('clear');
+          s.scripted = false;
+          audio.music(`area${this.area}`);
+        }
+        if (s.progress >= 0x1431 && !this.bossMusic && s.scripted) {
           this.bossMusic = true;
           audio.music('boss');
         }
@@ -90,13 +104,22 @@ export class Game {
           }
         }
         if (this.players.every((h) => h.state === 'gameover')) this.go('continue');
+        else if (s.roam) this.checkExits(s);
         else if (s.progress >= END && !s.enemiesAlive && s.spawnIndex >= s.data.spawns.length && this.t > 60) this.go('clear');
         break;
       }
+      case 'travel':
+        // the view closes into a box, then the next area opens
+        if (this.t >= 30 && this.travelTo) {
+          const { area, from } = this.travelTo;
+          this.travelTo = null;
+          void this.loadArea(area, false, from);
+        }
+        break;
       case 'clear':
         this.stage!.update();
         if (this.t > 150) {
-          if (this.area + 1 < AREAS) this.startCamp();
+          if (this.area + 1 < AREAS && !this.stage!.roam) this.startCamp();
           else this.startEnding();
         }
         break;
@@ -168,6 +191,30 @@ export class Game {
     }
   }
 
+  /** The area the heroes would walk into off the left (-1) or right (1) end, if any. */
+  exitArea(dir: number): number | null {
+    const n = this.area + dir;
+    if (n < 0 || n >= AREAS) return null;
+    // the way on opens once the area's boss is beaten (or on a later visit)
+    if (dir > 0 && this.stage!.scripted) return null;
+    return n;
+  }
+
+  /** The player walks off an end of the area (with no fight on): on to the next. */
+  private checkExits(s: Stage) {
+    if (s.engaged) return;
+    const p = this.players.find((h) => !h.dead && h.state !== 'gameover');
+    if (!p || !p.pad.x) return;
+    const sx = (p.mount ?? p).x - s.left;
+    const [lo, hi] = s.camLimits;
+    const dir = p.pad.x < 0 && sx < 20 && s.camx >= hi ? -1 : p.pad.x > 0 && sx > 300 && s.camx <= lo ? 1 : 0;
+    if (!dir) return;
+    const n = this.exitArea(dir);
+    if (n === null) return;
+    this.travelTo = { area: n, from: dir > 0 ? 'left' : 'right' };
+    this.go('travel');
+  }
+
   private selMove = 0;
   private toastText = '';
   private toastTimer = 0;
@@ -207,6 +254,7 @@ export class Game {
   /** an area opens out of a box, as the original does after the map */
   private opening = 0;
   private bossMusic = false;
+  private areaCleared = false;
 
   go(s: State) {
     this.state = s;
@@ -270,21 +318,38 @@ export class Game {
     this.go('title');
   }
 
+  /** Near an open end of the area: where it leads. */
+  private drawSigns(s: Stage) {
+    if (!s.roam || s.engaged) return;
+    const [lo, hi] = s.camLimits;
+    if (s.camx >= hi && this.exitArea(-1) !== null) drawText(`< ${AREA_NAMES[this.area - 1]}`, 8, 44, '#ff0');
+    if (s.camx <= lo && this.exitArea(1) !== null) drawText(`${AREA_NAMES[this.area + 1]} >`, W - 8, 44, '#ff0', 'right');
+  }
+
   startGame() {
     this.heroes = [];
+    this.visited.clear();
     this.area = Number(new URLSearchParams(location.search).get('area') ?? 0);
     void this.loadArea(this.area, true);
   }
 
-  async loadArea(n: number, fresh = false) {
+  /** Open an area, the heroes coming in from its left end (or its right, walking back). */
+  async loadArea(n: number, fresh = false, from: 'left' | 'right' = 'left') {
     this.go('loading');
     const s = new Stage(n);
     await s.load();
     this.area = n;
+    s.scripted = !this.visited.has(n);
+    this.visited.add(n);
+    if (from === 'right') s.camx = s.camLimits[0];
     if (fresh || !this.heroes.length) this.heroes = this.makeHeroes(s);
     this.heroes.forEach((h, i) => {
+      if (h.mount) {
+        h.mount.setRider(null);
+        h.mount = null;
+      }
       h.stage = s;
-      h.x = 0x1000 - s.camx + 60 - i * 24;
+      h.x = from === 'right' ? s.left + 260 + i * 24 : 0x1000 - s.camx + 60 - i * 24;
       h.z = 0x1080;
       // find solid ground near the left of the screen
       for (let z = 0x1040 + i * 24; z < 0x1100; z += 4) {
@@ -292,13 +357,14 @@ export class Game {
         if (g > 0xf00 && g < 0x1480) { h.z = z; break; }
       }
       h.y = h.ground;
-      h.facing = 1;
+      h.facing = from === 'right' ? -1 : 1;
       h.setState('stand', h.anims.idle);
     });
     s.heroes = this.heroes;
     s.actors.push(...this.heroes);
     this.stage = s;
     this.bossMusic = false;
+    this.areaCleared = false;
     this.go('play');
     this.opening = 30;
     audio.music(`area${n}`);
@@ -361,10 +427,20 @@ export class Game {
         }
         if (this.paused) drawText('PAUSED', W / 2, 100, '#fff', 'center');
         break;
+      case 'travel': {
+        this.stage!.draw();
+        const k = 1 - Math.min(30, this.t) / 30, bw = W * k, bh = H * k;
+        fillRect(0, 0, W, (H - bh) / 2, '#000');
+        fillRect(0, (H + bh) / 2, W, (H - bh) / 2 + 1, '#000');
+        fillRect(0, 0, (W - bw) / 2, H, '#000');
+        fillRect((W + bw) / 2, 0, (W - bw) / 2 + 1, H, '#000');
+        break;
+      }
       case 'play':
       case 'clear':
         this.stage!.draw();
         drawHud(this.stage!, this.heroes);
+        if (this.state === 'play') this.drawSigns(this.stage!);
         if (this.state === 'clear') drawText('STAGE CLEAR', W / 2, 90, '#ff0', 'center');
         if (this.opening > 0) {
           const k = 1 - this.opening / 30, bw = W * k, bh = H * k;

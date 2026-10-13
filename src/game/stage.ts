@@ -4,7 +4,7 @@
 import { decode8, loadArea, hdArea, loadHdArea, type AreaData } from '../assets';
 import { ctx, renderLayer, scale, tilePalette, W, H, type TileLayer } from '../gfx';
 import type { Actor } from './actor';
-import { spawnActor } from './spawn';
+import { spawnActor, isFoe } from './spawn';
 import type { Hero } from './hero';
 import { Fighter } from './fighter';
 import { assets } from '../assets';
@@ -38,6 +38,21 @@ export class Stage {
   flashTimer = 0;
 
 
+  /**
+   * Roaming (the RPG): the camera follows the heroes both ways and holds still while they fight,
+   * and away from the area's scripted fights enemies turn up as random encounters.
+   */
+  roam = true;
+  /** the area's scripted fights still play (its first visit) */
+  scripted = true;
+  /** the spawn script's ordinary foes (not its boss wave), for random encounters */
+  table: [number, number, number, number, number][] = [];
+  /** camera travel since the last fight, and how far until the next */
+  private travel = 0;
+  private nextEncounter = 0;
+  /** which way the camera last moved: 1 right, -1 left */
+  heading = 1;
+
   constructor(public area: number) {}
 
   async load() {
@@ -49,6 +64,73 @@ export class Stage {
     this.camy = this.camYRange(this.camx)[0];
     if (scale > 1) await loadHdArea(this.area);
     this.buildLayers();
+    this.table = this.data.spawns.filter((e) => e[0] < END - 0x40 && isFoe(e[4]));
+    this.nextEncounter = this.encounterGap();
+  }
+
+  /** the camera's limits: [rightmost, leftmost] (camx falls as the view moves right) */
+  get camLimits(): [number, number] {
+    return [this.data.cam[0][0], this.data.cam[1][0]];
+  }
+
+  /** world x of the screen's left edge */
+  get left() {
+    return 0x1000 - this.camx - 8;
+  }
+
+  /** A fight is on: a living foe in or near the view. */
+  get engaged() {
+    return this.actors.some((a) => {
+      if (!a.isEnemy || !a.hostile || a.dead || a.gone) return false;
+      const sx = a.x - this.left;
+      return sx > -48 && sx < 368;
+    });
+  }
+
+  private encounterGap() {
+    return 360 + Math.floor(Math.random() * 360);
+  }
+
+  /** Follow the player both ways (with a little slack), but never while a fight is on. */
+  private roamCamera(lead: Hero | undefined) {
+    if (!lead || this.engaged) return;
+    const sx = (lead.mount ?? lead).x - this.left;
+    let want = this.camx;
+    if (sx > 176) want = this.camx - (sx - 176);
+    else if (sx < 144) want = this.camx + (144 - sx);
+    const [lo, hi] = this.camLimits;
+    want = Math.max(lo, Math.min(hi, want));
+    const d = Math.round(Math.max(-6, Math.min(6, want - this.camx)));
+    if (!d) return;
+    this.camx += d;
+    this.heading = d < 0 ? 1 : -1;
+    // the scripted fights still to come keep random ones away
+    const next = this.scripted ? this.data.spawns[this.spawnIndex] : undefined;
+    if (!next || next[0] > this.progress + 0x180) this.travel += Math.abs(d);
+  }
+
+  /** A random encounter: a few of the area's own foes walk in from the way the heroes are going. */
+  private encounter() {
+    if (this.travel < this.nextEncounter || this.frozen || this.engaged) return;
+    this.travel = 0;
+    this.nextEncounter = this.encounterGap();
+    const pool = this.table.length ? this.table : [[0, 0, 0, 0, 0x18b28] as [number, number, number, number, number]];
+    const n = 1 + Math.floor(Math.random() * Math.min(3, 2 + this.area));
+    const lead = this.heroes.find((h) => !h.cpu) ?? this.heroes[0];
+    for (let i = 0; i < n; i++) {
+      // mostly from ahead, now and then from behind
+      const side = Math.random() < 0.75 ? this.heading : -this.heading;
+      for (const dir of [side, -side]) {
+        const x = dir > 0 ? this.left + 340 + i * 20 : this.left - 20 - i * 20;
+        const z = this.floorZ(x, (lead?.z ?? 0x1080) + Math.floor(Math.random() * 40) - 20);
+        const g = this.groundAt(x, z);
+        if (g <= 0xf00 || g >= 0x1480) continue;
+        const [, , , param, init] = pool[Math.floor(Math.random() * pool.length)];
+        const a = spawnActor(this, init, x, z, param);
+        if (a) this.actors.push(a);
+        break;
+      }
+    }
   }
 
   /** night falls for the bonus camp */
@@ -120,7 +202,7 @@ export class Stage {
     this.refill = true;
   }
   private updateTimer() {
-    if (this.frozen) return;
+    if (this.frozen || this.roam) return;
     if (this.refill) {
       this.timer = Math.min(3600, this.timer + 15);
       if (this.timer >= 3600) this.refill = false;
@@ -174,7 +256,8 @@ export class Stage {
     const people = this.heroes.filter((h) => !h.cpu && !h.gone && h.state !== 'respawn' && h.state !== 'gameover');
     const drivers = people.length ? people : this.heroes.filter((h) => !h.gone);
     const lead = drivers.reduce((m, h) => Math.max(m, h.x), 0);
-    if (lead) {
+    if (this.roam) this.roamCamera(drivers[0]);
+    else if (lead) {
       const sx = lead - 0x1000 + this.camx + 8;
       if (sx > 160) {
         const maxCam = 0x1000 - 7 - stop; // camx at the stop
@@ -182,7 +265,7 @@ export class Stage {
       }
     }
     // release the stop once its enemies are dealt with
-    if (this.progress >= stop) {
+    if (!this.roam && this.progress >= stop) {
       const pending = this.data.spawns.slice(this.spawnIndex).some((s) => s[0] <= stop);
       this.clearTimer = this.enemiesAlive || pending ? 0 : this.clearTimer + 1;
       if (this.clearTimer > 30 && this.stopIndex < this.data.stops.length - 1) this.stopIndex++;
@@ -198,17 +281,26 @@ export class Stage {
     }
     // spawns
     const sp = this.data.spawns;
+    if (!this.scripted) this.spawnIndex = sp.length;
+    if (this.roam) this.encounter();
     while (this.spawnIndex < sp.length && this.progress >= sp[this.spawnIndex][0]) {
       const [, x, z, param, init] = sp[this.spawnIndex++];
       const a = spawnActor(this, init, x, z, param);
       if (a) this.actors.push(a);
     }
     // the boss fight at the end of the area: the sky changes
-    if (this.progress >= END && !this.boss) {
+    if (this.progress >= END && !this.boss && this.scripted) {
       this.boss = true;
       this.buildLayers();
     }
     for (const a of this.actors) if (!a.gone) a.update();
+    // roaming: foes left far behind wander off
+    if (this.roam) {
+      for (const a of this.actors) {
+        const sx = a.x - this.left;
+        if (a.isEnemy && (sx < -360 || sx > 680)) a.gone = true;
+      }
+    }
     this.actors = this.actors.filter((a) => !a.gone);
   }
 

@@ -34,6 +34,11 @@ const VILLAGERS: Record<number, [number, number]> = {
   0x99c0: [0x9fe8, 0x4d], 0x99c8: [0x9fe8, 0x4d], 0x99fe: [0xa10e, 0x4d], 0x9a9a: [0xa10e, 0x64],
 };
 
+/** A spawn routine that brings on something to fight (a foe, or a rider on a beast). */
+export function isFoe(init: number): boolean {
+  return init in ENEMIES || init in BEASTS;
+}
+
 export function spawnActor(stage: Stage, init: number, x: number, z: number, param: number): Actor | null {
   const e = ENEMIES[init];
   if (e) return new Enemy(stage, KINDS[e[0]], x, z, e[1]);
