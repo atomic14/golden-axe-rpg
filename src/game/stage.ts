@@ -95,22 +95,27 @@ export class Stage {
     return 360 + Math.floor(Math.random() * 360);
   }
 
-  /** Follow the player both ways (with a little slack), but never while a fight is on. */
+  /**
+   * Follow the player both ways (with a little slack). In a fight the slack widens and the
+   * camera eases, so the fight stays framed but the player is never pinned to the screen's edge.
+   */
   private roamCamera(lead: Hero | undefined) {
-    if (!lead || this.engaged) return;
+    if (!lead) return;
+    const fight = this.engaged;
+    const [near, far, speed] = fight ? [80, 240, 3] : [144, 176, 6];
     const sx = (lead.mount ?? lead).x - this.left;
     let want = this.camx;
-    if (sx > 176) want = this.camx - (sx - 176);
-    else if (sx < 144) want = this.camx + (144 - sx);
+    if (sx > far) want = this.camx - (sx - far);
+    else if (sx < near) want = this.camx + (near - sx);
     const [lo, hi] = this.camLimits;
     want = Math.max(lo, Math.min(hi, want));
-    const d = Math.round(Math.max(-6, Math.min(6, want - this.camx)));
+    const d = Math.round(Math.max(-speed, Math.min(speed, want - this.camx)));
     if (!d) return;
     this.camx += d;
     this.heading = d < 0 ? 1 : -1;
     // the scripted fights still to come keep random ones away
     const next = this.scripted ? this.data.spawns[this.spawnIndex] : undefined;
-    if (!next || next[0] > this.progress + 0x180) this.travel += Math.abs(d);
+    if (!fight && (!next || next[0] > this.progress + 0x180)) this.travel += Math.abs(d);
   }
 
   /** A random encounter: a few of the area's own foes walk in from the way the heroes are going. */
