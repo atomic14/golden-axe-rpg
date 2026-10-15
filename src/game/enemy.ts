@@ -66,6 +66,9 @@ export const KINDS: Record<string, Kind> = {
   },
 };
 
+/** a skeleton climbing out of the ground */
+const RISE = 0x24a00;
+
 export class Enemy extends Fighter {
   isEnemy = true;
   anims: Anims;
@@ -116,6 +119,18 @@ export class Enemy extends Fighter {
 
   get grabbable() {
     return this.kind.grabbable;
+  }
+
+  /** Climb out of the ground where it stands (skeletons: 0x24a00, past its standing first step). */
+  rise() {
+    this.entering = false;
+    this.setState('rise', RISE);
+    this.anim.go(1);
+    this.cooldown = Math.max(this.cooldown, 30);
+  }
+
+  get vulnerable() {
+    return this.state !== 'rise' && super.vulnerable;
   }
 
   update() {
@@ -228,6 +243,10 @@ export class Enemy extends Fighter {
         }
         break;
       }
+      case 'rise':
+        this.anim.tick();
+        if (this.anim.looped) this.setState('stand', this.anims.idle);
+        break;
       case 'leap':
         // the jump script: crouch, then rise and fall frames
         if (this.t < 12) { this.anim.tick(); break; }
@@ -241,7 +260,8 @@ export class Enemy extends Fighter {
         break;
       case 'attack': {
         this.anim.tick();
-        if (this.attackHits(this.stage.heroes).length) audio.sfx('hurt');
+        // a hero on a beast is hit through it (and knocked off)
+        if (this.attackHits(this.stage.heroes.map((o) => o.mount ?? o)).length) audio.sfx('hurt');
         if (this.anim.looped || this.t > 90) {
           this.cooldown = 50 + Math.floor(Math.random() * 70);
           this.setState('stand', this.anims.idle);

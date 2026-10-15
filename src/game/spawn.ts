@@ -35,15 +35,26 @@ const VILLAGERS: Record<number, [number, number]> = {
 };
 
 /** A spawn routine that brings on something to fight (a foe, or a rider on a beast). */
+/** the kind of foe a spawn routine brings on, if any */
+export function foeKind(init: number): string | undefined {
+  return ENEMIES[init]?.[0];
+}
+
 export function isFoe(init: number): boolean {
   return init in ENEMIES || init in BEASTS;
 }
 
 export function spawnActor(stage: Stage, init: number, x: number, z: number, param: number): Actor | null {
   const e = ENEMIES[init];
-  if (e) return new Enemy(stage, KINDS[e[0]], x, z, e[1]);
+  // skeletons that turn up in view climb out of the ground
+  const risen = (en: Enemy) => {
+    const sx = x - stage.left;
+    if (en.kind === KINDS.skeleton && sx > 16 && sx < 304) en.rise();
+    return en;
+  };
+  if (e) return risen(new Enemy(stage, KINDS[e[0]], x, z, e[1]));
   // the throne room: Death Adder (param 0x1005) with skeletons rising at his side
-  if (init === 0x25352) return param === 0x1005 ? new Enemy(stage, KINDS.adder, x, z, 0x50) : new Enemy(stage, KINDS.skeleton, x, z, 0x70);
+  if (init === 0x25352) return param === 0x1005 ? new Enemy(stage, KINDS.adder, x, z, 0x50) : risen(new Enemy(stage, KINDS.skeleton, x, z, 0x70));
   const beast = BEASTS[init];
   if (beast) return new Beast(stage, beast, x, z, { ...RIDERS[Math.min(stage.area, RIDERS.length - 1)] });
   if (init === 0x17d0e || init === 0x17d24) return new Thief(stage, x, z, param);

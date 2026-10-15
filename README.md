@@ -23,7 +23,7 @@ it:
   Riders can cast from the saddle; jump makes the beast leap, and jumping again mid-leap hops off.
 
 Tests for the new parts: `tests/roam.js`, `tests/rpg.js`, `tests/world.js`, `tests/town.js`, `tests/loot.js`,
-`tests/fightcam.js`, `tests/leap.js`, `tests/ledge.js` (with
+`tests/fightcam.js`, `tests/leap.js`, `tests/ledge.js`, `tests/skeleton.js` (with
 `npm run dev` running, `npx tsx tools/play.ts tests/world.js http://localhost:5173/`). The port's
 older tests in `tests/` drive the arcade flow and no longer apply.
 

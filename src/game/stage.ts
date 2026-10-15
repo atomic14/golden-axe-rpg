@@ -4,7 +4,7 @@
 import { decode8, loadArea, hdArea, loadHdArea, type AreaData } from '../assets';
 import { ctx, renderLayer, scale, tilePalette, W, H, type TileLayer } from '../gfx';
 import type { Actor } from './actor';
-import { spawnActor, isFoe } from './spawn';
+import { spawnActor, isFoe, foeKind } from './spawn';
 import type { Hero } from './hero';
 import { Fighter } from './fighter';
 import { assets } from '../assets';
@@ -129,12 +129,15 @@ export class Stage {
     for (let i = 0; i < n; i++) {
       // mostly from ahead, now and then from behind
       const side = Math.random() < 0.75 ? this.heading : -this.heading;
+      const [, , , param, init] = pool[Math.floor(Math.random() * pool.length)];
+      // the dead rise out of the ground near the heroes instead
+      const rises = foeKind(init) === 'skeleton' && lead;
       for (const dir of [side, -side]) {
-        const x = dir > 0 ? this.left + 340 + i * 20 : this.left - 20 - i * 20;
+        const x = rises ? Math.max(this.left + 30, Math.min(this.left + 290, lead.x + dir * (50 + i * 30 + Math.random() * 40)))
+          : dir > 0 ? this.left + 340 + i * 20 : this.left - 20 - i * 20;
         const z = this.floorZ(x, (lead?.z ?? 0x1080) + Math.floor(Math.random() * 40) - 20);
         const g = this.groundAt(x, z);
         if (g <= 0xf00 || g >= 0x1480) continue;
-        const [, , , param, init] = pool[Math.floor(Math.random() * pool.length)];
         const a = spawnActor(this, init, x, z, param);
         if (a instanceof Enemy && a.kind.grabbable && Math.random() < 0.12) a.makeChampion();
         if (a) this.actors.push(a);
@@ -235,7 +238,7 @@ export class Stage {
     for (const dx of [0x80, 0xc0]) {
       const x = this.progress + dx;
       const e = new Enemy(this, KINDS.skeleton, x, this.floorZ(x, 0x1070), 0x73);
-      e.entering = false;
+      e.rise();
       this.actors.push(e);
     }
   }
