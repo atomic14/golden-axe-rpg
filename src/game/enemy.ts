@@ -150,7 +150,9 @@ export class Enemy extends Fighter {
         this.side = dx > 0 ? -1 : 1;
         // keep a spot at attack distance on our side of the hero, unless cooling down
         const reach = this.kind.reach;
-        const want = this.cooldown > 0 ? reach[1] + 28 : (reach[0] + reach[1]) / 2;
+        // a hero up on a ledge (or down off one) can't be hit from here: close in, to jump up to them
+        const level = Math.abs(h.ground - this.ground) <= 12 || h.airborne;
+        const want = !level ? 0 : this.cooldown > 0 ? reach[1] + 28 : (reach[0] + reach[1]) / 2;
         // take the other side of the hero if ours is off screen
         const scr = (x: number) => x - 0x1000 + this.stage.camx + 8;
         if (scr(h.x + this.side * want) > 300 || scr(h.x + this.side * want) < 20) this.side = -this.side;
@@ -162,7 +164,7 @@ export class Enemy extends Fighter {
         if (sx > 20 && sx < 300) this.entering = false;
         if (!this.entering && ((sx < 12 && mx < 0) || (sx > 308 && mx > 0))) mx = 0;
         // far off but level with the hero: run in at 3px/tick, as the originals do
-        if (this.anims.run && Math.abs(tx - this.x) > 90 && Math.abs(dz) < 6 && !this.entering && this.cooldown <= 0) {
+        if (level && this.anims.run && Math.abs(tx - this.x) > 90 && Math.abs(dz) < 6 && !this.entering && this.cooldown <= 0) {
           this.setState('run', this.anims.run);
           this.facing = tx > this.x ? 1 : -1;
           break;
@@ -176,9 +178,13 @@ export class Enemy extends Fighter {
             if (this.anims.jump) this.anim.go(3);
             break;
           }
-          if (this.x === ox && this.z === oz && this.anims.jump) {
-            const ahead = this.stage.groundAt(this.x + mx * 12, this.z + mz * 12);
+          // (blocked one way while still sliding the other counts: a ledge along the depth)
+          const bx = mx && this.x === ox ? mx : 0, bz = mz && this.z === oz ? mz : 0;
+          if ((bx || bz) && this.anims.jump) {
+            const ahead = this.stage.groundAt(this.x + bx * 12, this.z + bz * 12);
             if (ahead < this.y - 12 && ahead > this.y - 72) {
+              mx = bx;
+              mz = bz;
               this.setState('leap', this.anims.jump);
               this.vx = mx * 1.2;
               this.vz = mz * 0.8;
@@ -194,7 +200,7 @@ export class Enemy extends Fighter {
           this.anim.tick();
         }
         const rel = (h.x - this.x) * this.facing;
-        if (this.cooldown <= 0 && rel >= reach[0] - 4 && rel <= reach[1] && Math.abs(dz) < 6 && !h.airborne) {
+        if (level && this.cooldown <= 0 && rel >= reach[0] - 4 && rel <= reach[1] && Math.abs(dz) < 6 && !h.airborne) {
           this.wait++;
           if (this.wait > 6) {
             this.wait = 0;
