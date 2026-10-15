@@ -198,6 +198,19 @@ export class Stage {
     return [this.data.cam[0][1], this.data.cam[1][1]];
   }
 
+  /** The vertical range for this view, widened to the one that frames a hero at world x mid-screen. */
+  camYRangeFor(camx: number, x: number): [number, number] {
+    const [a, b] = this.camYRange(camx);
+    const [c, d] = this.camYRange(0x1000 - 8 - (x - 160));
+    return [Math.min(a, c), Math.max(b, d)];
+  }
+
+  /** Feet at (x, z) would be below the screen even with the camera as low as it goes there. */
+  belowView(x: number, z: number) {
+    const zz = z - 0x1000;
+    return zz - Math.floor(zz / 4) + (this.groundAt(x, z) - 0x1000) + this.camYRangeFor(this.camx, x)[0] > 220;
+  }
+
   get enemiesAlive() {
     return this.actors.some((a) => a.isEnemy && a.hostile && !a.dead && !a.gone);
   }
@@ -298,10 +311,11 @@ export class Stage {
       this.clearTimer = this.enemiesAlive || pending ? 0 : this.clearTimer + 1;
       if (this.clearTimer > 30 && this.stopIndex < this.data.stops.length - 1) this.stopIndex++;
     }
-    // vertical camera: follow the hero within the range the original used here
-    const [lo, hi] = this.camYRange(this.camx);
+    // vertical camera: follow the hero within the range the original used here (the original kept
+    // the hero mid-screen, so its range is also taken from where the hero stands)
     const h = drivers[0];
     if (h) {
+      const [lo, hi] = this.camYRangeFor(this.camx, (h.mount ?? h).x);
       const zz = h.z - 0x1000;
       const want = 150 - (zz - Math.floor(zz / 4) + (Math.min(h.y, h.ground) - 0x1000));
       const target = Math.max(lo, Math.min(hi, want));

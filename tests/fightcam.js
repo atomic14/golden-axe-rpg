@@ -19,4 +19,22 @@ for (let i = 0; i < 160; i++) advance(1);
 K('KeyD', false);
 const sx = b.x - s.left;
 await shot('fightcam');
-return [['engaged', s.engaged], ['camera moved', cam0, '->', s.camx], ['rider screen x', Math.round(sx)]];
+const first = [['engaged', s.engaged], ['camera moved', cam0, '->', s.camx], ['rider screen x', Math.round(sx)]];
+// Turtle Village's slope: walk down at the right of the view (where the ground falls away) and stay on screen
+foe.gone = true; h.dismount?.();
+await game.loadArea(1, true);
+while (game.overlay) { tap('KeyJ'); advance(30); }
+const t = game.stage, g = game.heroes[0];
+t.actors = t.actors.filter((a) => a.isHero); t.spawnIndex = t.data.spawns.length; t.nextEncounter = 1e9;
+const pin = new mods.Enemy(t, mods.KINDS.heninger, 0, 0x1000, 0x1b); pin.update = () => {}; t.actors.push(pin);
+t.camx = -255; t.camy = t.camYRange(t.camx)[0];
+g.x = t.left + 260; g.z = t.floorZ(g.x, 0x1060); g.y = g.ground;
+pin.x = g.x + 40; pin.z = g.z;
+K('KeyS', true);
+for (let i = 0; i < 200; i++) advance(1);
+K('KeyS', false);
+for (let i = 0; i < 60; i++) advance(1);
+const feet = t.project(g.x, g.z, g.y)[1];
+await shot('fightcam-slope');
+const slope = ['slope: feet on screen', Math.round(feet), feet <= 222, 'z', g.z.toString(16)];
+return [...first, slope];

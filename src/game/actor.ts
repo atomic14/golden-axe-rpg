@@ -107,7 +107,9 @@ export abstract class Actor {
     // only the leading edge counts: higher ground behind is not a wall
     const ok = (x: number, z: number, edge: number) => Math.min(s.groundAt(x + edge, z), s.groundAt(x, z)) >= this.y - 12;
     if (dx && ok(this.x + dx, this.z, Math.sign(dx) * this.radius)) this.x += dx;
-    if (dz && ok(this.x, this.z + dz, 0)) this.z += dz;
+    // heroes (and the beasts they ride) can't walk down into floor the camera can never show
+    const inView = (z: number) => dz < 0 || !(this.isHero || (this as { heroRider?: unknown }).heroRider) || !s.belowView(this.x, z);
+    if (dz && ok(this.x, this.z + dz, 0) && inView(this.z + dz)) this.z += dz;
   }
 
   draw() {
