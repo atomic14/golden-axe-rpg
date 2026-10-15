@@ -333,7 +333,7 @@ export class Brain {
   /** On a beast: get level with the target at the beast's reach and let it rip. */
   private ride(p: Pad) {
     const h = this.hero, b = h.mount!, t = this.target;
-    // beasts can't climb or jump: get off for a target up on a ledge (or down off one)
+    // (the partner doesn't plan beast leaps) get off for a target up on a ledge (or down off one)
     if (t && Math.abs(t.ground - b.ground) > 12 && !t.airborne) return this.getOff(p);
     const reach = b.type === 'chicken' ? 40 : b.type === 'blue' ? 70 : 110;
     let gx: number, gz: number;
@@ -342,7 +342,7 @@ export class Brain {
       if (this.sx(t.x + side * reach) < 20 || this.sx(t.x + side * reach) > 300) side = -side;
       [gx, gz] = [t.x + side * reach, t.z];
     } else if (this.goal) {
-      // beasts can't jump: get off where the way on needs a jump
+      // get off where the way on needs a jump
       if (this.next?.jump) return this.getOff(p);
       [gx, gz] = this.waypoint() ?? this.goal;
     } else return;

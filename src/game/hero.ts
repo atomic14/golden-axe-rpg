@@ -390,6 +390,8 @@ export class Hero extends Fighter {
     audio.sfx('hurt');
   }
 
+  /** a beast's leap: its speed across */
+  private leapX = 0;
   /** ticks left of a spell cast from a beast's back (it stands still meanwhile) */
   private rideCast = 0;
 
@@ -413,8 +415,16 @@ export class Hero extends Fighter {
       b.anim.tick();
       b.attackEffects(this.enemies);
       if (b.anim.looped || b.t > 120) b.setState('stand', set[0]);
+    } else if (this.pressed.jump && !b.airborne) {
+      // the beast leaps (up ledges, over gaps); it keeps the way it was going
+      b.y = b.ground - 2;
+      b.vy = -4.5;
+      this.leapX = p.x * (this.running && p.x ? 3 : 1.5);
+      if (b.anim.addr !== set[0]) b.setState('stand', set[0]);
+      audio.sfx('jump');
     } else if (this.pressed.jump) {
-      // hop off backwards
+      // jump again mid-leap: hop off backwards
+      this.leapX = 0;
       b.setRider(null);
       this.mount = null;
       this.mountCooldown = 40;
@@ -428,6 +438,11 @@ export class Hero extends Fighter {
     } else if (this.pressed.attack) {
       b.setState('attack');
       b.playMove(set[4]);
+    } else if (b.airborne) {
+      // in the air: drift on, steering a little
+      if (p.x) this.facing = b.facing = p.x;
+      if (p.x && Math.sign(p.x) !== Math.sign(this.leapX)) this.leapX = p.x * 1.5;
+      b.move(this.leapX || p.x * 1.5, p.y * 1);
     } else if (p.x || p.y) {
       if (p.x) this.facing = b.facing = p.x;
       const run = this.running && p.x;
